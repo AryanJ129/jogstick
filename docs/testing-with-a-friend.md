@@ -34,8 +34,8 @@ Checks that the controller keeps being read while Resolve is the active window.
 
 1. Open Resolve with any project. Connect the controller.
 2. Start the probe and choose `1`. Read the five steps it prints.
-3. **Put the probe window beside Resolve** so you can see both, press Enter, then click once on
-   Resolve's timeline. From now on Resolve stays in front; you only watch the probe window.
+3. **Put the probe window beside Resolve** so you can see both, press Enter, then switch to Resolve
+   with **Alt+Tab**. From now on Resolve stays in front; you only watch the probe window.
 4. Do the steps. The controller buzzes once when a step starts and twice when it ends:
    1. Press **A** exactly **100** times, counting yourself (the probe hides its count), then hold **Y** for 1 second.
    2. Move the **left stick** in circles and to every edge for 30 seconds.
@@ -55,10 +55,12 @@ Set up first (the probe repeats this):
 - Edit page, a **new empty timeline**. Note its frame rate.
 - Effects → Toolbox → Generators → drag **Solid Color** onto V1, and drag its end out to **at least 3 minutes**.
 - Open the **Edit Index** (top-left of the Edit page): you'll read how many events it lists.
-- Put the playhead in the middle of the clip.
+- Put the playhead in the middle of the clip, then click once on an empty part of the timeline (below the
+  clip) so the timeline has keyboard focus.
 
-Then follow the probe. Each time it says _"click once on Resolve's timeline"_, do that and keep your hands
-off the mouse and keyboard until it says _"Click back on this window"_. It asks you to read the Edit
+Then follow the probe. Each time it says _"Switch to Resolve with Alt+Tab"_, do that **with Alt+Tab, not
+by clicking inside Resolve** (a click on the timeline ruler moves the playhead and spoils the measurement),
+and keep your hands off the mouse and keyboard until it says _"Switch back to this window"_. It asks you to read the Edit
 Index count or the timecode above the viewer, and to answer y/n questions. Typing `?` is fine when you're unsure.
 
 Step 4 sends arrow keys with a deliberate bug, so the playhead **not** moving properly there is the expected result.
@@ -73,8 +75,9 @@ Checks how Resolve's color wheels react to mouse drags.
    The video lands in `Videos\Captures`.
 3. In the probe choose `3`. You mark three points by hovering the mouse and pressing **A** on the controller:
    the centre of the **Lift** wheel, the centre of the **Offset** wheel, and the **Lift master dial** under the Lift wheel.
-4. The probe adds a fresh node (Alt+S), runs seven short drags, and after each one asks you to type the numbers
-   shown under the wheel (e.g. `0.00 0.03 -0.01 -0.02`). It undoes each drag (Ctrl+Z) afterwards.
+4. The probe adds a fresh node (Alt+S) and runs seven short drags. After each one it asks whether the wheel
+   changed; if it did, you type the numbers shown under the wheel (e.g. `0.00 0.03 -0.01 -0.02`) and the
+   probe undoes the change (Ctrl+Z). Switch to Resolve with Alt+Tab when asked, as in Test 2.
 5. Delete the extra node when it's done.
 
 ## 6. Export your Resolve keyboard shortcuts

@@ -118,9 +118,13 @@ mod win {
         SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
     }
 
-    /// Wait until Resolve's main window is frontmost (a click on its timeline), then settle.
+    /// Wait until Resolve's main window is frontmost, then settle. The tester switches with
+    /// Alt+Tab rather than clicking inside Resolve: a click on the timeline ruler moves the
+    /// playhead and would spoil a timecode measurement.
     fn wait_for_resolve(secs: u64) -> bool {
-        say(&format!("  → Now click once on Resolve's timeline. Waiting up to {secs} s…"));
+        say(&format!(
+            "  → Switch to Resolve with Alt+Tab (don't click inside it), then hands off. Waiting up to {secs} s…"
+        ));
         let deadline = Instant::now() + Duration::from_secs(secs);
         while Instant::now() < deadline {
             if let Some(fg) = app_win::foreground() {
@@ -560,7 +564,9 @@ mod win {
         say("  • Edit page, a NEW empty timeline. Note its frame rate (Timeline settings).");
         say("  • Effects → Toolbox → Generators → drag 'Solid Color' onto V1. Drag its end out to at least 3 minutes. No audio.");
         say("  • Open the 'Edit Index' (button at the top-left of the Edit page) so you can see the list of events.");
-        say("  • Put the playhead in the middle of the Solid Color clip.");
+        say("  • Put the playhead in the middle of the Solid Color clip, then click once on an empty");
+        say("    part of the timeline (below the clip) so the timeline has keyboard focus.");
+        say("  • From now on, switch between Resolve and this window with Alt+Tab, not by clicking in Resolve.");
         pause("When that's ready");
         let fps = loop {
             match ask_num("Timeline frame rate? (24, 25, 30, 50 or 60; for 23.976 type 24, for 29.97 type 30)") {
@@ -580,7 +586,7 @@ mod win {
             let layout = app_win::foreground_keyboard_layout();
             let r = out.tap("Mod+B", 16, KeyOpts::default());
             std::thread::sleep(Duration::from_millis(300));
-            say("Click back on this window.");
+            say("Switch back to this window (Alt+Tab or click it).");
             json!({"sent": r.is_ok(), "error": r.err(), "split": ask_yn("Did the clip split at the playhead?"), "resolveKeyboardLayout": layout})
         } else {
             json!({"skipped": true})
@@ -610,7 +616,7 @@ mod win {
                 std::thread::sleep(Duration::from_millis(40));
             }
             let _ = out.inj.release_all();
-            say("Click back on this window.");
+            say("Switch back to this window (Alt+Tab or click it).");
             let after = ask_num("How many events does the Edit Index list now?");
             let landed = before.zip(after).map(|(b, a)| a - b);
             say(&format!("  sent {sent}, landed {}", landed.map_or("?".into(), |l| l.to_string())));
@@ -647,7 +653,7 @@ mod win {
             let jk =
                 if resolve_focused() { hold(&mut out, "KeyK", "KeyJ") } else { Err("Resolve not in front".into()) };
             let _ = out.inj.release_all();
-            say("Click back on this window.");
+            say("Switch back to this window (Alt+Tab or click it).");
             json!({
                 "klSent": kl.is_ok(), "jkSent": jk.is_ok(),
                 "klSlowForward": ask_yn("First 3 seconds (K+L): did it play FORWARD slowly, slower than normal speed?"),
@@ -665,7 +671,7 @@ mod win {
             let detected: Vec<Value> =
                 pids.iter().map(|p| json!({"pid": p, "elevation": app_win::elevation(*p)})).collect();
             let r = if wait_for_resolve(30) { out.tap("Mod+B", 30, KeyOpts::default()).is_ok() } else { false };
-            say("Click back on this window.");
+            say("Switch back to this window (Alt+Tab or click it).");
             let happened = ask_yn("Did the split happen this time?");
             say("Please close Resolve and start it normally again before using Jogstick.");
             json!({"detected": detected, "sent": r, "splitHappened": happened})
@@ -700,7 +706,7 @@ mod win {
         let r = tap_at_rate(out, "ArrowRight", n, 30.0, opts);
         let secs = t0.elapsed().as_secs_f64();
         let _ = out.inj.release_all();
-        say("Click back on this window.");
+        say("Switch back to this window (Alt+Tab or click it).");
         let after = ask_timecode("Timecode now?", fps);
         let moved = before.zip(after).map(|(b, a)| a - b);
         say(&format!(
@@ -800,7 +806,7 @@ mod win {
                 let _ = out.inj.mouse_move_to(p.x, p.y);
                 std::thread::sleep(Duration::from_millis(1500));
             }
-            say("Click back on this window.");
+            say("Switch back to this window (Alt+Tab or click it).");
             derived_ok = ask_yn("Did the mouse stop on the center of every wheel and every master dial?");
             if derived_ok == Some(false) {
                 say("OK, mark all 8 by hand instead: hover, then press A.");
@@ -820,7 +826,7 @@ mod win {
         if wait_for_resolve(20) {
             let _ = out.tap("Alt+S", 30, KeyOpts::default());
             std::thread::sleep(Duration::from_millis(400));
-            say("Click back on this window.");
+            say("Switch back to this window (Alt+Tab or click it).");
             node_added = ask_yn("Was a new node added in the node graph?");
         }
 
@@ -841,13 +847,22 @@ mod win {
                 return;
             }
             let r = drag(out, from, dx, dy, ms);
-            say("Click back on this window.");
-            let answer = question.map(ask_yn);
-            let vals = values.and_then(|(q, n)| ask_floats(q, n));
-            if wait_for_resolve(20) {
-                undo(out);
+            say("Switch back to this window (Alt+Tab or click it).");
+            let changed = ask_yn(question.unwrap_or("Did the wheel (or the numbers under it) change?"));
+            let vals = if changed == Some(true) { values.and_then(|(q, n)| ask_floats(q, n)) } else { None };
+            // Undo only a change we caused; an undo after a no-op would revert something else.
+            let undone = changed == Some(true) && {
+                say("The probe will undo that change (Ctrl+Z).");
+                wait_for_resolve(20) && {
+                    undo(out);
+                    true
+                }
+            };
+            if changed.is_none() {
+                say("Not sure? Check the wheel yourself and undo with Ctrl+Z in Resolve if it moved.");
             }
-            tests.push(json!({"id": id, "from": from, "dx": dx, "dy": dy, "ms": ms, "error": r.err(), "answer": answer, "values": vals}));
+            tests.push(json!({"id": id, "from": from, "dx": dx, "dy": dy, "ms": ms, "error": r.err(),
+                "changed": changed, "values": vals, "undone": undone}));
         };
         let lift_vals = Some(("Type the 4 numbers under the LIFT wheel (Y R G B), e.g. 0.00 0.03 -0.01 -0.02:", 4));
         run(

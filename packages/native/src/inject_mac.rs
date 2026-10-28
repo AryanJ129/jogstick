@@ -7,13 +7,13 @@ use crate::combo::Mods;
 use crate::injector::{Backend, KeyOpts, MouseBtn};
 use crate::keymap::{KeyDef, Modifier};
 use crate::EVENT_TAG;
-use core_graphics::event::{
-    CGEvent, CGEventField, CGEventFlags, CGEventTapLocation, CGEventType, CGMouseButton, EventField,
-};
 use core_foundation::base::TCFType;
 use core_foundation::boolean::CFBoolean;
 use core_foundation::dictionary::{CFDictionary, CFDictionaryRef};
 use core_foundation::string::{CFString, CFStringRef};
+use core_graphics::event::{
+    CGEvent, CGEventField, CGEventFlags, CGEventTapLocation, CGEventType, CGMouseButton, EventField,
+};
 use core_graphics::event_source::{CGEventSource, CGEventSourceStateID};
 use core_graphics::geometry::CGPoint;
 

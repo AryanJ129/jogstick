@@ -1,0 +1,43 @@
+name: probe
+
+# Builds jogstick-probe.exe (and the Windows harness) for testers. The release
+# itself is created from Aryan's machine with scripts/gh-as-aryan so it is
+# authored by AryanJ129 (see docs/testing-with-a-friend.md).
+on:
+  workflow_dispatch:
+  push:
+    tags: ['probe-v*']
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: packages/native
+    env:
+      # Static CRT: the exe runs on a PC without the VC++ redistributable.
+      RUSTFLAGS: -C target-feature=+crt-static
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: packages/native
+      - run: cargo test --features harness
+      - run: cargo build --release --features harness --bins
+      - name: Package
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Copy-Item target/release/jogstick-probe.exe dist/
+          Copy-Item target/release/jogstick-harness.exe dist/
+          Get-FileHash dist/*.exe -Algorithm SHA256 | ForEach-Object { "$($_.Hash.ToLower())  $(Split-Path $_.Path -Leaf)" } | Set-Content -Encoding ascii dist/SHA256SUMS
+          Get-Content dist/SHA256SUMS
+      - uses: actions/upload-artifact@v7
+        with:
+          name: jogstick-probe-windows-x64
+          path: packages/native/dist/
+          if-no-files-found: error

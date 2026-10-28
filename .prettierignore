@@ -1,0 +1,9 @@
+BUILD_BRIEF.md
+CLAUDE.md
+pnpm-lock.yaml
+target/
+dist/
+out/
+coverage/
+packages/native/index.d.ts
+packages/native/index.js

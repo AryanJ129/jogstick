@@ -1,0 +1,9 @@
+node_modules/
+dist/
+out/
+coverage/
+target/
+*.node
+.DS_Store
+*.log
+jogstick-probe-report*.json

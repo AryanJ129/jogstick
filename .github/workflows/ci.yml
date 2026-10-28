@@ -1,0 +1,77 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  js:
+    name: lint + typecheck + tests (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Lint
+        if: matrix.os == 'ubuntu-latest'
+        run: pnpm lint
+      - name: Audit
+        if: matrix.os == 'ubuntu-latest'
+        run: pnpm audit --audit-level high
+      - run: pnpm -F @jogstick/engine -F @jogstick/desktop typecheck
+      - run: pnpm -F @jogstick/engine test
+      - run: pnpm -F @jogstick/desktop build
+
+  native:
+    name: native (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: packages/native
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: packages/native
+      - run: cargo fmt --check
+      - run: cargo clippy --features harness --all-targets -- -D warnings
+      - run: cargo test --features harness
+      - run: cargo build --release --features harness --bins
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+        working-directory: .
+      - name: Build the Node addon
+        run: pnpm -F @jogstick/native build
+        working-directory: .
+      # Can SendInput reach the runner's desktop? If not, the harness self-test is local-only.
+      - name: Harness self-test (Windows, best effort)
+        if: matrix.os == 'windows-latest'
+        continue-on-error: true
+        run: ./target/release/jogstick-harness.exe --self-test

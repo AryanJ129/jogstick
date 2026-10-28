@@ -1,0 +1,338 @@
+{
+  "edit.splitClip": {
+    "label": "Split clip at playhead (blade)",
+    "darwin": "Cmd+B",
+    "win32": "Ctrl+B",
+    "source": "massive.io",
+    "verified": false
+  },
+  "edit.rippleDelete": {
+    "label": "Ripple delete",
+    "darwin": "Shift+Backspace",
+    "win32": "Shift+Backspace",
+    "source": "R15 + jayaretv",
+    "verified": false
+  },
+  "view.toggleSourceTimeline": {
+    "label": "Source/timeline viewer",
+    "darwin": "Q",
+    "win32": "Q",
+    "source": "brief Edit table",
+    "verified": false
+  },
+  "edit.cut": {
+    "label": "Cut",
+    "darwin": "Cmd+X",
+    "win32": "Ctrl+X",
+    "source": "R15",
+    "verified": false
+  },
+  "edit.rippleCut": {
+    "label": "Ripple cut",
+    "darwin": "Cmd+Shift+X",
+    "win32": "Ctrl+Shift+X",
+    "source": "R15",
+    "verified": false
+  },
+  "select.clipsForwardAllTracks": {
+    "label": "Select clips forward, all tracks",
+    "darwin": "Alt+Y",
+    "win32": "Alt+Y",
+    "source": "R15",
+    "verified": false
+  },
+  "edit.copy": {
+    "label": "Copy",
+    "darwin": "Cmd+C",
+    "win32": "Ctrl+C",
+    "source": "R15",
+    "verified": false
+  },
+  "trim.extendEdit": {
+    "label": "Extend edit",
+    "darwin": "E",
+    "win32": "E",
+    "source": "R15",
+    "verified": false
+  },
+  "select.nearestClipGap": {
+    "label": "Select nearest clip/gap",
+    "darwin": "Shift+V",
+    "win32": "Shift+V",
+    "source": "R15",
+    "verified": false
+  },
+  "edit.paste": {
+    "label": "Paste",
+    "darwin": "Cmd+V",
+    "win32": "Ctrl+V",
+    "source": "R15",
+    "verified": false
+  },
+  "edit.pasteInsert": {
+    "label": "Paste insert",
+    "darwin": null,
+    "win32": null,
+    "source": "no known default; bind once",
+    "verified": false
+  },
+  "nav.matchFrame": {
+    "label": "Match frame",
+    "darwin": "F",
+    "win32": "F",
+    "source": "R15",
+    "verified": false
+  },
+  "nav.prevEdit": {
+    "label": "Previous edit",
+    "darwin": "ArrowUp",
+    "win32": "ArrowUp",
+    "source": "R15",
+    "verified": false
+  },
+  "nav.nextEdit": {
+    "label": "Next edit",
+    "darwin": "ArrowDown",
+    "win32": "ArrowDown",
+    "source": "R15",
+    "verified": false
+  },
+  "trim.trimStart": {
+    "label": "Trim start",
+    "darwin": "Shift+[",
+    "win32": "Shift+[",
+    "source": "R15",
+    "verified": false
+  },
+  "trim.trimEnd": {
+    "label": "Trim end",
+    "darwin": "Shift+]",
+    "win32": "Shift+]",
+    "source": "R15",
+    "verified": false
+  },
+  "mark.in": {
+    "label": "Mark in",
+    "darwin": "I",
+    "win32": "I",
+    "source": "R15",
+    "verified": false
+  },
+  "mark.out": {
+    "label": "Mark out",
+    "darwin": "O",
+    "win32": "O",
+    "source": "R15",
+    "verified": false
+  },
+  "nav.stepFrameBackward": {
+    "label": "Step one frame back",
+    "darwin": "ArrowLeft",
+    "win32": "ArrowLeft",
+    "source": "R15",
+    "verified": false
+  },
+  "nav.stepFrameForward": {
+    "label": "Step one frame forward",
+    "darwin": "ArrowRight",
+    "win32": "ArrowRight",
+    "source": "R15",
+    "verified": false
+  },
+  "nav.stepSecondBackward": {
+    "label": "Step one second back",
+    "darwin": "Shift+ArrowLeft",
+    "win32": "Shift+ArrowLeft",
+    "source": "brief §8 jog fast-at-edge (Shift+Arrow); not in R15 sheet",
+    "verified": false
+  },
+  "nav.stepSecondForward": {
+    "label": "Step one second forward",
+    "darwin": "Shift+ArrowRight",
+    "win32": "Shift+ArrowRight",
+    "source": "brief §8 jog fast-at-edge (Shift+Arrow); not in R15 sheet",
+    "verified": false
+  },
+  "trim.nudgeLeft": {
+    "label": "Nudge one frame left",
+    "darwin": ",",
+    "win32": ",",
+    "source": "R15",
+    "verified": false
+  },
+  "trim.nudgeRight": {
+    "label": "Nudge one frame right",
+    "darwin": ".",
+    "win32": ".",
+    "source": "R15",
+    "verified": false
+  },
+  "trim.rippleStartToPlayhead": {
+    "label": "Ripple start to playhead",
+    "darwin": "Cmd+Shift+[",
+    "win32": "Ctrl+Shift+[",
+    "source": "R15",
+    "verified": false
+  },
+  "trim.rippleEndToPlayhead": {
+    "label": "Ripple end to playhead",
+    "darwin": "Cmd+Shift+]",
+    "win32": "Ctrl+Shift+]",
+    "source": "R15",
+    "verified": false
+  },
+  "view.zoomIn": {
+    "label": "Zoom in",
+    "darwin": "Cmd+=",
+    "win32": "Ctrl+=",
+    "source": "R15 (verify it zooms the timeline)",
+    "verified": false
+  },
+  "view.zoomOut": {
+    "label": "Zoom out",
+    "darwin": "Cmd+-",
+    "win32": "Ctrl+-",
+    "source": "R15 (verify it zooms the timeline)",
+    "verified": false
+  },
+  "view.zoomToFit": {
+    "label": "Zoom to fit",
+    "darwin": "Shift+Z",
+    "win32": "Shift+Z",
+    "source": "R15",
+    "verified": false
+  },
+  "transport.playPause": {
+    "label": "Play / pause",
+    "darwin": "Space",
+    "win32": "Space",
+    "source": "R15",
+    "verified": false
+  },
+  "transport.playAround": {
+    "label": "Play around current frame",
+    "darwin": "/",
+    "win32": "/",
+    "source": "R15",
+    "verified": false
+  },
+  "mark.clearInOut": {
+    "label": "Clear in and out",
+    "darwin": "Alt+X",
+    "win32": "Alt+X",
+    "source": "R15",
+    "verified": false
+  },
+  "edit.undo": {
+    "label": "Undo",
+    "darwin": "Cmd+Z",
+    "win32": "Ctrl+Z",
+    "source": "R15",
+    "verified": false
+  },
+  "edit.redo": {
+    "label": "Redo",
+    "darwin": "Cmd+Shift+Z",
+    "win32": "Ctrl+Shift+Z",
+    "source": "R15",
+    "verified": false
+  },
+  "transport.playReverse": {
+    "label": "Play reverse (J)",
+    "darwin": "J",
+    "win32": "J",
+    "source": "R15",
+    "verified": false
+  },
+  "transport.stop": {
+    "label": "Stop (K)",
+    "darwin": "K",
+    "win32": "K",
+    "source": "R15",
+    "verified": false
+  },
+  "transport.playForward": {
+    "label": "Play forward (L)",
+    "darwin": "L",
+    "win32": "L",
+    "source": "R15",
+    "verified": false
+  },
+  "color.addSerialNode": {
+    "label": "Add serial node",
+    "darwin": "Alt+S",
+    "win32": "Alt+S",
+    "source": "R15",
+    "verified": false
+  },
+  "color.addParallelNode": {
+    "label": "Add parallel node",
+    "darwin": "Alt+P",
+    "win32": "Alt+P",
+    "source": "R15",
+    "verified": false
+  },
+  "color.toggleNode": {
+    "label": "Node on/off",
+    "darwin": "Cmd+D",
+    "win32": "Ctrl+D",
+    "source": "R15",
+    "verified": false
+  },
+  "color.bypassAll": {
+    "label": "Bypass all grades",
+    "darwin": "Shift+D",
+    "win32": "Shift+D",
+    "source": "R15",
+    "verified": false
+  },
+  "color.grabStill": {
+    "label": "Grab still",
+    "darwin": "Cmd+Alt+G",
+    "win32": "Ctrl+Alt+G",
+    "source": "R15",
+    "verified": false
+  },
+  "color.resetNodeGrade": {
+    "label": "Reset node grade",
+    "darwin": "Shift+Home",
+    "win32": "Shift+Home",
+    "source": "brief Color table",
+    "verified": false
+  },
+  "color.highlight": {
+    "label": "Highlight",
+    "darwin": "Shift+H",
+    "win32": "Shift+H",
+    "source": "R15",
+    "verified": false
+  },
+  "color.prevClip": {
+    "label": "Previous clip",
+    "darwin": "ArrowUp",
+    "win32": "ArrowUp",
+    "source": "brief Color table",
+    "verified": false
+  },
+  "color.nextClip": {
+    "label": "Next clip",
+    "darwin": "ArrowDown",
+    "win32": "ArrowDown",
+    "source": "brief Color table",
+    "verified": false
+  },
+  "color.prevNode": {
+    "label": "Previous node",
+    "darwin": null,
+    "win32": null,
+    "source": "not in R15 sheet; may have a default — preset export settles it",
+    "verified": false
+  },
+  "color.nextNode": {
+    "label": "Next node",
+    "darwin": null,
+    "win32": null,
+    "source": "not in R15 sheet; may have a default — preset export settles it",
+    "verified": false
+  }
+}

@@ -70,8 +70,8 @@ jobs:
       - name: Build the Node addon
         run: pnpm -F @jogstick/native build
         working-directory: .
-      # Can SendInput reach the runner's desktop? If not, the harness self-test is local-only.
-      - name: Harness self-test (Windows, best effort)
+      # SendInput reaches the windows-latest desktop (16/16 on the first run), so this is a required check.
+      # macOS runners can't grant Accessibility; there it runs locally via scripts/harness-mac.sh.
+      - name: Harness self-test (Windows)
         if: matrix.os == 'windows-latest'
-        continue-on-error: true
         run: ./target/release/jogstick-harness.exe --self-test

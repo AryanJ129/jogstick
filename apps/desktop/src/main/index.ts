@@ -28,6 +28,9 @@ const log = new Log(2000, Date.now, E2E_SCRIPT !== undefined);
 const os = process.platform === 'win32' ? 'win32' : 'darwin';
 
 if (USER_DATA) app.setPath('userData', USER_DATA);
+// Jogstick stores no secrets and makes no network requests; without this, Chromium creates an
+// "Electron Safe Storage" keychain item at launch and macOS may show a keychain prompt for it.
+if (process.platform === 'darwin') app.commandLine.appendSwitch('use-mock-keychain');
 
 let native: Native | null = null;
 let host: Host | null = null;

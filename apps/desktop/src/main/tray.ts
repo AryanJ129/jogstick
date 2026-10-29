@@ -34,6 +34,7 @@ const GATE_TEXT: Record<HostStatus['gate']['reason'], string> = {
   unknown: 'Waiting for DaVinci Resolve',
   paused: 'Paused',
   noAccess: 'Needs Accessibility permission',
+  transient: 'Paused: a system prompt is in front',
 };
 
 export function statusLines(s: HostStatus): string[] {

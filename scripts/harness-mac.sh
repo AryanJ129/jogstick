@@ -6,6 +6,8 @@
 #
 #   scripts/harness-mac.sh            self-test (exit 0 = all checks passed)
 #   scripts/harness-mac.sh --log      open the harness and log events until closed
+#   scripts/harness-mac.sh --build    build and sign only (signing briefly shows SecurityAgent,
+#                                     which takes focus; scripts/e2e-mac.ts signs first, then opens)
 set -eu
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
@@ -33,6 +35,7 @@ cat > "$app/Contents/Info.plist" <<'EOF'
 </plist>
 EOF
 "$root/scripts/dev-sign-mac.sh" "$app" >/dev/null
+[ "${1:-}" = "--build" ] && exit 0
 
 mode="--self-test"
 [ "${1:-}" = "--log" ] && mode="--log"

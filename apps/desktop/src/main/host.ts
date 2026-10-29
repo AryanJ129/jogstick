@@ -249,7 +249,7 @@ export class Host {
       ? { open: false, reason: 'noAccess', app: front?.id ?? null }
       : this.paused
         ? { open: false, reason: 'paused', app: front?.id ?? null }
-        : evaluateGate(front, this.gate, {
+        : evaluateGate(front, {
             appMatch: [
               ...this.config.profile.appMatch[this.deps.os],
               ...(this.deps.extraGateApps ?? []),

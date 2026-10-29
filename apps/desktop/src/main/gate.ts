@@ -5,7 +5,15 @@ import type { FrontmostInfo } from './native';
  * modal dialog is up. Pure; the host feeds it every frontmost change.
  */
 export type GateReason =
-  'open' | 'notTarget' | 'dialog' | 'self' | 'elevated' | 'unknown' | 'paused' | 'noAccess';
+  | 'open'
+  | 'notTarget'
+  | 'dialog'
+  | 'self'
+  | 'elevated'
+  | 'unknown'
+  | 'paused'
+  | 'noAccess'
+  | 'transient';
 
 export interface GateState {
   open: boolean;
@@ -25,16 +33,13 @@ export interface GateConfig {
 
 export const CLOSED: GateState = { open: false, reason: 'unknown', app: null };
 
-export function evaluateGate(
-  front: FrontmostInfo | null,
-  prev: GateState,
-  cfg: GateConfig,
-): GateState {
+export function evaluateGate(front: FrontmostInfo | null, cfg: GateConfig): GateState {
   if (front === null) return { open: false, reason: 'unknown', app: null };
-  // Screen saver, login window, notification banners: they take focus for a moment; keep the gate
-  // as it was (it re-evaluates when the real app comes back).
-  if (front.transient) return prev;
   const app = front.id;
+  // Screen saver, login window, password prompts (SecurityAgent), notification banners: they take
+  // focus for a moment. The gate closes anyway (keys must never land in a password field) but under
+  // its own reason, so the host can tell it from leaving Resolve; it re-opens when Resolve is back.
+  if (front.transient) return { open: false, reason: 'transient', app };
   if (front.pid === cfg.selfPid) return { open: false, reason: 'self', app };
   const match = cfg.appMatch.some((m) => m.toLowerCase() === app.toLowerCase());
   if (!match) return { open: false, reason: 'notTarget', app };

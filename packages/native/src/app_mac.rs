@@ -176,8 +176,11 @@ pub fn process_path(pid: u32) -> Option<String> {
 /// `/Applications/DaVinci Resolve/DaVinci Resolve.app/Contents/MacOS/Resolve`
 /// → `/Applications/DaVinci Resolve/DaVinci Resolve.app` (the outermost bundle wins for helpers).
 pub fn bundle_path(exe: &str) -> Option<&str> {
-    let i = exe.find(".app/")?;
-    Some(&exe[..i + 4])
+    // `.bundle` too: SecurityAgent (the password prompt) runs from SecurityAgent.bundle.
+    [".app/", ".bundle/"]
+        .iter()
+        .filter_map(|ext| exe.find(ext).map(|i| &exe[..i + ext.len() - 1]))
+        .min_by_key(|s| s.len())
 }
 
 /// Bundle identifier and display name of the app that owns `pid`.
@@ -235,6 +238,12 @@ mod tests {
         assert_eq!(
             bundle_path("/A/Outer.app/Contents/Frameworks/Helper.app/Contents/MacOS/Helper"),
             Some("/A/Outer.app")
+        );
+        assert_eq!(
+            bundle_path(
+                "/System/Library/Frameworks/Security.framework/Versions/A/MachServices/SecurityAgent.bundle/Contents/MacOS/SecurityAgent"
+            ),
+            Some("/System/Library/Frameworks/Security.framework/Versions/A/MachServices/SecurityAgent.bundle")
         );
         assert_eq!(bundle_path("/usr/bin/true"), None);
     }

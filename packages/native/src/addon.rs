@@ -242,7 +242,8 @@ pub struct FrontmostInfo {
     /// [x, y, w, h] of the focused window.
     pub bounds: Option<Vec<f64>>,
     pub is_dialog: bool,
-    /// macOS overlays that briefly take focus (screen saver, notifications): keep the gate as it was.
+    /// macOS overlays that briefly take focus (lock screen, password prompt, screen saver,
+    /// notifications). The gate closes for them too, under its own reason.
     pub transient: bool,
 }
 

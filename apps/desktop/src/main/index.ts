@@ -19,10 +19,12 @@ import { AppTray } from './tray';
  *   JOGSTICK_E2E_SCRIPT  replay this frame script instead of a real pad, then exit
  *   JOGSTICK_GATE_APP    an extra app id the gate accepts (the harness bundle id / exe)
  *   JOGSTICK_USER_DATA   use this folder as <userData>
+ * A packaged build ignores all three: a replayed script would type into the gated app.
  */
-const E2E_SCRIPT = process.env['JOGSTICK_E2E_SCRIPT'];
-const GATE_APP = process.env['JOGSTICK_GATE_APP'];
-const USER_DATA = process.env['JOGSTICK_USER_DATA'];
+const devEnv = (name: string) => (packaged ? undefined : process.env[name]);
+const E2E_SCRIPT = devEnv('JOGSTICK_E2E_SCRIPT');
+const GATE_APP = devEnv('JOGSTICK_GATE_APP');
+const USER_DATA = devEnv('JOGSTICK_USER_DATA');
 
 const log = new Log(2000, Date.now, E2E_SCRIPT !== undefined);
 const os = process.platform === 'win32' ? 'win32' : 'darwin';
@@ -74,13 +76,33 @@ function openEditor(): void {
 
 // --- safety: anything unexpected releases everything first --------------------
 
+// A throw inside an uncaughtException handler kills the process, so the release is guarded too
+// (and Host.releaseAll lets go at the OS level before anything else can fail).
+function emergencyRelease(reason: string): void {
+  try {
+    host?.releaseAll(reason);
+  } catch (e) {
+    try {
+      native?.releaseAll();
+    } catch {
+      // Nothing else left to try (an addon call that panics already releases on its own).
+    }
+    log.add('error', `releaseAll after ${reason}: ${String(e)}`);
+  }
+}
 process.on('uncaughtException', (e) => {
   log.add('error', `uncaught: ${e.stack ?? e.message}`);
-  host?.releaseAll('uncaught exception');
+  emergencyRelease('uncaught exception');
 });
 process.on('unhandledRejection', (e) => {
   log.add('error', `unhandled rejection: ${String(e)}`);
-  host?.releaseAll('unhandled rejection');
+  emergencyRelease('unhandled rejection');
+});
+
+// No window of ours ever navigates or opens another one.
+app.on('web-contents-created', (_e, contents) => {
+  contents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  contents.on('will-navigate', (e) => e.preventDefault());
 });
 
 function watchPower(): void {
@@ -132,19 +154,9 @@ function refreshUi(): void {
   tray?.update(s, [...warnings.values()]);
   if (overlay) {
     const view = overlayView(s, prevMode);
-    const front = s.gate.app !== null && native ? safeFront(native) : null;
-    overlay.show(view, front?.bounds);
+    overlay.show(view, s.gate.app !== null ? s.bounds : undefined);
   }
   prevMode = s.mode;
-}
-
-function safeFront(n: Native) {
-  try {
-    return n.frontmostApp();
-  } catch (e) {
-    log.add('error', `frontmostApp: ${String(e)}`);
-    return null;
-  }
 }
 
 async function exportLog(): Promise<void> {

@@ -57,15 +57,21 @@ function fakeNative() {
     };
     frontCb?.(front);
   };
-  return { n, calls, setFront };
+  /** The foreground changes but the 25 ms watcher hasn't reported it yet. */
+  const setFrontUnreported = (f: Partial<FrontmostInfo>) => {
+    front = { ...(front as FrontmostInfo), ...f };
+  };
+  return { n, calls, setFront, setFrontUnreported };
 }
 
 class FakePad implements PadSource {
   readonly kind = 'replay';
   sink: PadSink | null = null;
   rumbles: string[] = [];
+  starts = 0;
   start(sink: PadSink) {
     this.sink = sink;
+    this.starts++;
     sink.connected('fake pad');
   }
   stop() {}
@@ -108,6 +114,10 @@ beforeEach(() => {
   buttons.fill(0);
   axes.fill(0);
   dir = mkdtempSync(join(tmpdir(), 'jogstick-host-'));
+  makeHost('darwin');
+});
+
+function makeHost(os: 'darwin' | 'win32') {
   log = new Log();
   fake = fakeNative();
   pad = new FakePad();
@@ -117,12 +127,9 @@ beforeEach(() => {
     log,
     () => true,
   );
-  host = new Host(
-    { native: fake.n, log, os: 'darwin', pad, now: () => performance.now() },
-    store.current,
-  );
+  host = new Host({ native: fake.n, log, os, pad, now: () => performance.now() }, store.current);
   host.start();
-});
+}
 afterEach(() => {
   host.stop('test');
   vi.useRealTimers();
@@ -217,6 +224,65 @@ describe('Host', () => {
     expect(host.status().mode).toBe('color');
     expect(pad.rumbles).toEqual(['pulse', 'pulse']);
     release(VIEW, MENU);
+  });
+
+  it('releaseAll lets go at the OS level even when the engine state is broken', () => {
+    fake.setFront({});
+    press(R3);
+    // What an engine exception mid-step can leave behind: a state that throws again.
+    (host as unknown as { engine: object }).engine = {};
+    expect(() => host.releaseAll('test')).not.toThrow();
+    expect(fake.calls).toEqual(['mouse left down', 'releaseAll']);
+    expect(log.all().some((e) => e.msg.includes('engine state rebuilt'))).toBe(true);
+    // The rebuilt engine waits for a fresh press: R3 is still held, so letting go does nothing.
+    release(R3);
+    vi.advanceTimersByTime(50);
+    expect(injected()).toEqual(['mouse left down']);
+    tap(A);
+    vi.advanceTimersByTime(50);
+    expect(injected()).toContain('down Cmd+KeyB');
+  });
+
+  it('a reload with a button held does not fire it again', () => {
+    fake.setFront({});
+    press(A);
+    vi.advanceTimersByTime(50);
+    const before = injected().length;
+    host.applyConfig({ ...host.currentConfig });
+    sink().frame([...buttons], [...axes]); // A still down
+    vi.advanceTimersByTime(50);
+    release(A);
+    vi.advanceTimersByTime(50);
+    expect(injected().length).toBe(before);
+    tap(A);
+    vi.advanceTimersByTime(50);
+    expect(injected().filter((c) => c === 'down Cmd+KeyB')).toHaveLength(2);
+  });
+
+  it('a dead pad source shows as disconnected and restarts with backoff', () => {
+    expect(pad.starts).toBe(1);
+    sink().error('pad thread panic: test', true);
+    expect(host.status().pad.connected).toBe(false);
+    vi.advanceTimersByTime(999);
+    expect(pad.starts).toBe(1);
+    vi.advanceTimersByTime(1);
+    expect(pad.starts).toBe(2);
+    expect(host.status().pad.connected).toBe(true);
+  });
+
+  it('Windows: a dialog the watcher has not reported yet still stops a combo in flight', () => {
+    host.stop('test');
+    makeHost('win32');
+    fake.setFront({ id: 'Resolve.exe', name: 'Resolve' });
+    expect(host.status().gate.open).toBe(true);
+    press(A);
+    expect(fake.calls).toEqual(['mods Ctrl']);
+    fake.setFrontUnreported({ isDialog: true });
+    vi.advanceTimersByTime(16);
+    expect(fake.calls.filter((c) => c.startsWith('down'))).toEqual([]);
+    vi.advanceTimersByTime(16);
+    expect(host.status().gate.reason).toBe('dialog');
+    expect(fake.calls).toContain('releaseAll');
   });
 
   it('an injection error triggers releaseAll', () => {

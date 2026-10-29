@@ -21,6 +21,8 @@ export interface HostStatus {
   gate: GateState;
   pad: { connected: boolean; name: string | null };
   paused: boolean;
+  /** The frontmost window's bounds from the last watcher event (the overlay follows Resolve). */
+  bounds?: number[] | undefined;
 }
 
 export interface HostDeps {
@@ -66,6 +68,10 @@ export class Host {
   private lastFrame: { buttons: number[]; axes: number[] } | null = null;
   /** Windows: whether Jogstick itself runs elevated (then an elevated Resolve isn't blocked). */
   private readonly selfElevated: boolean;
+  private bounds: number[] | undefined;
+  private padRestart: ReturnType<typeof setTimeout> | null = null;
+  private padRestarts = 0;
+  private unknownElevation = new Set<number>();
   readonly now: () => number;
 
   constructor(
@@ -95,7 +101,7 @@ export class Host {
       sink,
       deps.clock ?? { setTimeout, clearTimeout: (h) => clearTimeout(h as never) },
       {
-        canInject: () => this.gate.open,
+        canInject: () => this.gate.open && this.stillFront(),
         onDropped: (op) => this.deps.log.add('queue', `dropped ${describeOp(op)} (gate closed)`),
         onError: (err, op) => {
           this.deps.log.add(
@@ -126,6 +132,8 @@ export class Host {
 
   stop(reason = 'quit'): void {
     this.releaseAll(reason);
+    if (this.padRestart) clearTimeout(this.padRestart);
+    this.padRestart = null;
     this.deps.pad.stop();
     this.deps.native.offFrontmostChanged();
     this.setTicking(false);
@@ -146,6 +154,7 @@ export class Host {
       gate: this.gate,
       pad: { connected: this.padConnected, name: this.padName },
       paused: this.paused,
+      bounds: this.bounds,
     };
   }
 
@@ -167,15 +176,44 @@ export class Host {
     this.queue.clear();
     this.writer.reset();
     this.heldCommands.clear();
-    const r = step(this.engine, { kind: 'releaseAll', reason }, this.now());
-    this.engine = r.state;
-    this.schedule(r);
+    // The OS release comes first and never depends on the engine: after an engine exception its
+    // state may be half-updated and throw again.
     try {
       this.deps.native.releaseAll();
     } catch (e) {
       this.deps.log.add('error', `releaseAll: ${String(e)}`);
     }
+    try {
+      const r = step(this.engine, { kind: 'releaseAll', reason }, this.now());
+      this.engine = r.state;
+      this.schedule(r);
+    } catch (e) {
+      this.deps.log.add('error', `engine releaseAll: ${String(e)} (engine state rebuilt)`);
+      this.rebuildEngine();
+    }
     this.deps.log.add('app', `releaseAll (${reason})`);
+  }
+
+  /** A fresh engine in the same mode, holding nothing; held buttons wait for a new press. */
+  private rebuildEngine(): void {
+    const compiled = compileProfile(this.config.profile);
+    const mode = this.engine.mode;
+    let fresh = createState(compiled, compiled.modes.includes(mode) ? mode : undefined);
+    fresh.connected = this.padConnected;
+    fresh.gateOpen = false;
+    this.setTicking(false);
+    // Like a gate re-open: the last frame (taken while gated, so nothing fires) tells the engine
+    // what is still held, then the gate opens and those inputs wait for a fresh press. Steps are
+    // called directly (commands dropped) so a second failure can't loop back through releaseAll.
+    try {
+      const t = this.now();
+      if (this.lastFrame)
+        fresh = step(fresh, { kind: 'frame', frame: { t, ...this.lastFrame } }, t).state;
+      if (this.gate.open) fresh = step(fresh, { kind: 'gate', open: true }, t).state;
+    } catch (e) {
+      this.deps.log.add('error', `engine rebuild: ${String(e)}`);
+    }
+    this.engine = fresh;
   }
 
   /** macOS: without the Accessibility grant nothing can be posted or read; the gate stays shut. */
@@ -202,14 +240,24 @@ export class Host {
     return safe(this.deps.log, 'frontmostApp', () => this.deps.native.frontmostApp(), null);
   }
 
-  /** A new profile/keymap/overrides: releaseAll, then swap atomically. */
+  /**
+   * A new profile/keymap/overrides: releaseAll, then swap atomically. The new engine keeps what is
+   * physically pressed or deflected and treats it like a gate re-open: nothing fires until it is
+   * let go and pressed again.
+   */
   applyConfig(config: Config): void {
     this.releaseAll('config reloaded');
-    const mode = this.engine.mode;
+    const prev = this.engine;
     const compiled = compileProfile(config.profile);
+    const next = createState(compiled, compiled.modes.includes(prev.mode) ? prev.mode : undefined);
+    next.connected = prev.connected;
+    next.pressed = { ...prev.pressed };
+    next.axes = [...prev.axes];
+    next.triggerValues = { ...prev.triggerValues };
+    next.gateOpen = false;
     this.config = config;
-    this.engine = createState(compiled, compiled.modes.includes(mode) ? mode : undefined);
-    this.engine.gateOpen = this.gate.open;
+    this.engine = next;
+    if (this.gate.open) this.run({ kind: 'gate', open: true });
     this.writer.spacingMs = config.profile.settings.comboSpacingMs;
     this.deps.log.add(
       'app',
@@ -226,6 +274,7 @@ export class Host {
       connected: (name) => {
         this.padConnected = true;
         this.padName = name;
+        this.padRestarts = 0;
         this.deps.log.add('pad', `connected: ${name}`);
         // One buzz on connect, so the user knows Jogstick has the pad (quick-start step 2).
         safe(this.deps.log, 'rumble', () => this.deps.pad.rumble('pulse'), undefined);
@@ -239,11 +288,28 @@ export class Host {
         this.releaseAll('controller disconnected');
         this.emitStatus();
       },
-      error: (message) => {
+      error: (message, fatal) => {
         this.deps.log.add('error', `pad: ${message}`);
         this.releaseAll('pad error');
+        if (fatal) this.restartPad();
       },
     };
+  }
+
+  /** The pad source died (thread panic, renderer gone): show it, then restart it with backoff. */
+  private restartPad(): void {
+    if (this.padConnected) this.run({ kind: 'disconnect' }, true);
+    this.padConnected = false;
+    this.lastFrame = null;
+    this.emitStatus();
+    if (this.padRestart) return;
+    const delay = Math.min(30_000, 1000 * 2 ** this.padRestarts++);
+    this.deps.log.add('pad', `restarting the controller input in ${delay / 1000} s`);
+    this.padRestart = setTimeout(() => {
+      this.padRestart = null;
+      safe(this.deps.log, 'pad stop', () => this.deps.pad.stop(), undefined);
+      safe(this.deps.log, 'pad start', () => this.deps.pad.start(this.padSink()), undefined);
+    }, delay);
   }
 
   onFrame(buttons: number[], axes: number[]): void {
@@ -253,8 +319,8 @@ export class Host {
     if (this.wantsTick && this.now() - this.lastTick >= TICK_MS / 2) this.tick();
   }
 
-  private onFrontmost(front: FrontmostInfo | null): void {
-    const next: GateState = !this.access
+  private evaluate(front: FrontmostInfo | null): GateState {
+    return !this.access
       ? { open: false, reason: 'noAccess', app: front?.id ?? null }
       : this.paused
         ? { open: false, reason: 'paused', app: front?.id ?? null }
@@ -265,11 +331,48 @@ export class Host {
             ],
             selfPid: process.pid,
             ...(this.deps.os === 'win32' && {
-              isElevated: (pid: number) => this.deps.native.isProcessElevated(pid),
+              isElevated: (pid: number) => this.elevated(pid),
               selfElevated: this.selfElevated,
             }),
           });
-    if (sameGate(next, this.gate)) return;
+  }
+
+  private elevated(pid: number): boolean | null {
+    const e = safe(
+      this.deps.log,
+      'isProcessElevated',
+      () => this.deps.native.isProcessElevated(pid),
+      null,
+    );
+    if (e === null && !this.unknownElevation.has(pid)) {
+      this.unknownElevation.add(pid);
+      this.deps.log.add('warn', `can't tell whether pid ${pid} runs elevated; treating it as not`);
+    }
+    return e;
+  }
+
+  /**
+   * Windows: the watcher polls every 25 ms, so a dialog or another app can be in front before the
+   * gate hears of it, with a combo still in the queue. Each press re-reads the foreground window
+   * (cheap on Windows; on macOS it is several AX calls, so the watcher alone decides there). A
+   * mismatch drops the op and closes the gate right after this pump.
+   */
+  private stillFront(): boolean {
+    if (this.deps.os !== 'win32') return true;
+    const front = this.frontmost();
+    if (this.evaluate(front).open) return true;
+    setTimeout(() => this.onFrontmost(front), 0);
+    return false;
+  }
+
+  private onFrontmost(front: FrontmostInfo | null): void {
+    const next = this.evaluate(front);
+    const boundsChanged = front?.bounds?.join() !== this.bounds?.join();
+    this.bounds = front?.bounds;
+    if (sameGate(next, this.gate)) {
+      if (boundsChanged) this.emitStatus();
+      return;
+    }
     const was = this.gate.open;
     this.gate = next;
     this.deps.log.add(

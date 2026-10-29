@@ -14,7 +14,8 @@ export interface PadSink {
   frame(buttons: number[], axes: number[]): void;
   connected(name: string): void;
   disconnected(): void;
-  error(message: string): void;
+  /** `fatal`: the source is dead (thread panic, renderer gone) and must be restarted. */
+  error(message: string, fatal?: boolean): void;
   /** Replay only: a named point in the script (the e2e driver acts on it). */
   mark?(name: string): void;
   /** Replay only: the script has finished. */
@@ -63,7 +64,9 @@ export class XInputSource implements PadSource {
             if (e.index === this.active && e.buttons && e.axes) sink.frame(e.buttons, e.axes);
             break;
           case 'error':
-            sink.error(e.message ?? 'pad thread error');
+            // The addon sends this only when the pad thread panicked and exited.
+            this.active = null;
+            sink.error(e.message ?? 'pad thread error', true);
             break;
         }
       },
@@ -130,7 +133,7 @@ export class GamepadSource implements PadSource {
     };
     ipcMain.on('pad:message', this.onMessage);
     win.webContents.on('render-process-gone', (_e, d) =>
-      sink.error(`pad renderer gone: ${d.reason}`),
+      sink.error(`pad renderer gone: ${d.reason}`, true),
     );
     void this.load(win, 'pad');
   }

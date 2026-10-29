@@ -367,7 +367,7 @@ function check(
     console.log('ABORT: other apps came to the front during the run; the gate closed, as it must:');
     for (const l of closures) console.log(`  ${l}`);
     console.log(`  pad frames while closed: ${framesClosed}; commands dispatched then: ${leaked}`);
-    console.log('Run again and leave the Mac untouched for ~30 s (harness window in front).');
+    console.log('Run again and leave the machine untouched for ~30 s (harness window in front).');
     process.exit(2);
   }
 

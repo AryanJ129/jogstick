@@ -43,4 +43,9 @@ describe('evaluateGate', () => {
     expect(evaluateGate(front({}), { ...cfg, isElevated: () => true }).reason).toBe('elevated');
     expect(evaluateGate(front({}), { ...cfg, isElevated: () => null }).open).toBe(true);
   });
+
+  it('an elevated Resolve is fine when Jogstick is elevated too (same integrity level)', () => {
+    const g = evaluateGate(front({}), { ...cfg, isElevated: () => true, selfElevated: true });
+    expect(g).toEqual({ open: true, reason: 'open', app: g.app });
+  });
 });

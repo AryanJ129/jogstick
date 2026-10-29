@@ -64,6 +64,8 @@ export class Host {
   private warnedDrive = false;
   private listeners = new Set<(s: HostStatus) => void>();
   private lastFrame: { buttons: number[]; axes: number[] } | null = null;
+  /** Windows: whether Jogstick itself runs elevated (then an elevated Resolve isn't blocked). */
+  private readonly selfElevated: boolean;
   readonly now: () => number;
 
   constructor(
@@ -76,6 +78,11 @@ export class Host {
     this.engine.gateOpen = false;
     this.writer = new ComboWriter(config.profile.settings.comboSpacingMs);
     const n = deps.native;
+    this.selfElevated =
+      deps.os === 'win32' &&
+      safe(deps.log, 'isProcessElevated(self)', () => n.isProcessElevated(process.pid), null) ===
+        true;
+    if (this.selfElevated) deps.log.add('app', 'Jogstick runs elevated (as administrator)');
     const sink: Sink = {
       modifierChanged: (mods) => n.modifierChanged(mods),
       keyDown: (code, mods) => n.keyDown(code, mods),
@@ -259,6 +266,7 @@ export class Host {
             selfPid: process.pid,
             ...(this.deps.os === 'win32' && {
               isElevated: (pid: number) => this.deps.native.isProcessElevated(pid),
+              selfElevated: this.selfElevated,
             }),
           });
     if (sameGate(next, this.gate)) return;

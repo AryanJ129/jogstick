@@ -29,6 +29,8 @@ export interface GateConfig {
   selfPid: number;
   /** Windows: `isProcessElevated(pid)`; null = unknown. */
   isElevated?: (pid: number) => boolean | null;
+  /** Jogstick itself runs elevated: UIPI only blocks input to a higher level, so nothing is blocked. */
+  selfElevated?: boolean;
 }
 
 export const CLOSED: GateState = { open: false, reason: 'unknown', app: null };
@@ -44,7 +46,8 @@ export function evaluateGate(front: FrontmostInfo | null, cfg: GateConfig): Gate
   const match = cfg.appMatch.some((m) => m.toLowerCase() === app.toLowerCase());
   if (!match) return { open: false, reason: 'notTarget', app };
   if (front.isDialog) return { open: false, reason: 'dialog', app };
-  if (cfg.isElevated?.(front.pid) === true) return { open: false, reason: 'elevated', app };
+  if (!cfg.selfElevated && cfg.isElevated?.(front.pid) === true)
+    return { open: false, reason: 'elevated', app };
   return { open: true, reason: 'open', app };
 }
 

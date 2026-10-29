@@ -29,7 +29,9 @@ mod win {
     use jogstick_native::keymap::lookup;
     use jogstick_native::pad::{btn, PadFrame};
     use jogstick_native::pad_win;
-    use jogstick_native::probe::{self, derive_wheel_points, rate_stats, timecode_to_frames, Pt, Report, WHEEL_NAMES};
+    use jogstick_native::probe::{
+        self, derive_wheel_points, rate_stats, timecode_to_frames, PacketGap, PacketTracker, Pt, Report, WHEEL_NAMES,
+    };
     use jogstick_native::PlatformBackend;
     use serde_json::{json, Value};
     use std::io::Write;
@@ -234,8 +236,13 @@ mod win {
         polls: AtomicU32,
         disconnected_polls: AtomicU32,
         packet_changes: AtomicU32,
-        packet_skips: AtomicU32,
+        packet_missed: AtomicU32,
+        /// Packet-number gaps, drained by the main loop and attributed to the current step.
+        gaps: Mutex<Vec<PacketGap>>,
     }
+
+    /// Gaps kept verbatim in the report; beyond this only the counts grow.
+    const MAX_GAPS_LISTED: usize = 200;
 
     fn rumble(slot: u32, pulses: u32) {
         for _ in 0..pulses {
@@ -254,6 +261,17 @@ mod win {
         Done,
     }
 
+    fn stage_name(s: Stage) -> &'static str {
+        match s {
+            Stage::Taps => "taps",
+            Stage::Sweep => "sweep",
+            Stage::Triggers => "triggers",
+            Stage::Chords => "chords",
+            Stage::Soak => "soak",
+            Stage::Done => "done",
+        }
+    }
+
     fn write_frames(dir: &Path, name: &str, frames: &[PadFrame], files: &mut Vec<String>) {
         let file = format!("{name}.frames.json");
         let body = json!({"source": "jogstick-probe pad", "stage": name, "frames": frames});
@@ -263,7 +281,7 @@ mod win {
     }
 
     fn pad(dir: &Path) -> Value {
-        heading("Pad check (about 10 minutes)");
+        heading("Pad check (about 15 minutes)");
         let mut slots = pad_win::connected();
         for _ in 0..3 {
             if !slots.is_empty() {
@@ -285,14 +303,35 @@ mod win {
                 None => "unknown",
             }
         ));
+        // The buzz is the step cue for the whole test, so confirm it works before starting.
+        rumble(slot, 1);
+        let mut buzz_ok = ask_yn("Did the controller just buzz?");
+        if buzz_ok == Some(false) {
+            say("The steps below are signalled by buzzes. Make sure vibration isn't turned off (for example in");
+            say(
+                "the Xbox Accessories app or Steam's controller settings), close Steam, then press Enter to try again.",
+            );
+            pause("");
+            rumble(slot, 1);
+            buzz_ok = ask_yn("Did it buzz this time?");
+            if buzz_ok != Some(true) {
+                say("OK. Without buzzes, watch this window: it prints each step as it starts.");
+            }
+        }
+        say("First, arrange the windows so you can see both:");
+        say("  • If Resolve is full screen, turn that off (Workspace → Full Screen Window) and make Resolve smaller.");
+        say("  • Put this window beside Resolve. You'll press Enter here, then Alt+Tab into Resolve.");
         say("What you'll do, with Resolve in front the whole time:");
-        say("  1. Press A exactly 100 times, counting yourself (the count stays hidden). Then hold Y for 1 second.");
+        say("  1. Press A about 100 times (counting helps, but the probe also checks for missed input by itself).");
+        say("     Then hold Y for 1 second.");
         say("  2. Move the LEFT stick in full circles and push it to every edge, for 30 seconds.");
         say("  3. Squeeze LT slowly all the way and let go, then RT, then quick pulls on both, for 15 seconds.");
         say("  4. Press View+Menu together 5 times, tap View alone 5 times, then hold LB and press A 5 times. Then hold Y for 1 second.");
         say(&format!("  5. Leave the pad alone (or play with it) until {minutes:.0} minutes have passed. The pad buzzes twice when it's over."));
-        say("The pad buzzes once when each step starts and twice when it ends. Put this window beside Resolve so you can watch the step.");
-        pause("Ready?");
+        say(
+            "The pad buzzes once when each step starts and twice when it ends. This window shows which step you're on.",
+        );
+        pause("Windows arranged and ready?");
         if !wait_for_resolve(30) {
             return json!({"kind": "pad", "error": "Resolve never came to the front"});
         }
@@ -303,14 +342,16 @@ mod win {
             polls: AtomicU32::new(0),
             disconnected_polls: AtomicU32::new(0),
             packet_changes: AtomicU32::new(0),
-            packet_skips: AtomicU32::new(0),
+            packet_missed: AtomicU32::new(0),
+            gaps: Mutex::new(Vec::new()),
         });
         let stop = Arc::new(AtomicBool::new(false));
         let poller = {
             let shared = shared.clone();
             let stop = stop.clone();
             std::thread::spawn(move || {
-                let mut last: Option<(u32, PadFrame)> = None;
+                let mut last: Option<PadFrame> = None;
+                let mut tracker = PacketTracker::default();
                 let mut sec_start = 0.0;
                 let mut sec_count = 0u32;
                 pad_win::run(250, slot, &stop, |t, poll| {
@@ -323,22 +364,19 @@ mod win {
                     sec_count += 1;
                     let Some(p) = poll else {
                         shared.disconnected_polls.fetch_add(1, Ordering::Relaxed);
+                        tracker.reset();
                         return;
                     };
-                    let frame = PadFrame::from_xinput(t * 1000.0, p.raw);
-                    match &last {
-                        Some((pkt, f)) if *pkt == p.packet && f.same_input(&frame) => {}
-                        Some((pkt, _)) => {
-                            shared.packet_changes.fetch_add(1, Ordering::Relaxed);
-                            let skip = p.packet.wrapping_sub(*pkt).saturating_sub(1);
-                            shared.packet_skips.fetch_add(skip, Ordering::Relaxed);
-                            shared.frames.lock().unwrap().push(frame.clone());
-                            last = Some((p.packet, frame));
-                        }
-                        None => {
-                            shared.frames.lock().unwrap().push(frame.clone());
-                            last = Some((p.packet, frame));
-                        }
+                    let t_ms = t * 1000.0;
+                    if let Some(gap) = tracker.observe(t_ms, p.packet) {
+                        shared.gaps.lock().unwrap().push(gap);
+                    }
+                    shared.packet_changes.store(tracker.changes as u32, Ordering::Relaxed);
+                    shared.packet_missed.store(tracker.missed as u32, Ordering::Relaxed);
+                    let frame = PadFrame::from_xinput(t_ms, p.raw);
+                    if !last.as_ref().is_some_and(|f| f.same_input(&frame)) {
+                        shared.frames.lock().unwrap().push(frame.clone());
+                        last = Some(frame);
                     }
                 })
             })
@@ -350,6 +388,11 @@ mod win {
         let mut files = Vec::new();
         let mut prev: Option<PadFrame> = None;
         let mut a_taps = 0u32;
+        let mut a_releases = 0u32;
+        let mut gaps_listed: Vec<Value> = Vec::new();
+        // Per step: (gap events, state changes missed).
+        let mut step_gaps: Vec<(&'static str, u32, u64)> =
+            ["taps", "sweep", "triggers", "chords", "soak"].iter().map(|s| (*s, 0, 0)).collect();
         let mut y_down_since: Option<f64> = None;
         let mut stage_started_at: Option<f64> = None;
         let mut sweep_max = [0.0f64; 4];
@@ -358,7 +401,7 @@ mod win {
         let mut last_fg = Instant::now();
         let mut last_print = Instant::now();
         rumble(slot, 1);
-        say("\nStep 1: press A exactly 100 times, then hold Y for 1 second.");
+        say("\nStep 1: press A about 100 times, then hold Y for 1 second.");
 
         while stage != Stage::Done {
             std::thread::sleep(Duration::from_millis(10));
@@ -370,11 +413,25 @@ mod win {
                     fg_resolve += 1;
                 }
             }
+            let new_gaps: Vec<PacketGap> = std::mem::take(&mut *shared.gaps.lock().unwrap());
+            if let Some(entry) = step_gaps.iter_mut().find(|e| e.0 == stage_name(stage)) {
+                for g in &new_gaps {
+                    entry.1 += 1;
+                    entry.2 += u64::from(g.missed);
+                    if gaps_listed.len() < MAX_GAPS_LISTED {
+                        gaps_listed.push(
+                            json!({"step": entry.0, "tMs": g.t_ms, "from": g.from, "to": g.to, "missed": g.missed}),
+                        );
+                    }
+                }
+            }
             let new: Vec<PadFrame> = std::mem::take(&mut *shared.frames.lock().unwrap());
             for f in new {
                 let rose = |i: usize| f.pressed(i) && !prev.as_ref().is_some_and(|p| p.pressed(i));
+                let fell = |i: usize| !f.pressed(i) && prev.as_ref().is_some_and(|p| p.pressed(i));
                 match stage {
                     Stage::Taps if rose(btn::A) => a_taps += 1,
+                    Stage::Taps if fell(btn::A) => a_releases += 1,
                     Stage::Sweep => {
                         if stage_started_at.is_none() && (f.axes[0].abs() > 0.3 || f.axes[1].abs() > 0.3) {
                             stage_started_at = Some(f.t);
@@ -442,23 +499,39 @@ mod win {
         let high_res = poller.join().unwrap_or(false);
         let power_end = app_win::power();
 
-        heading("Pad check finished — a few questions (click this window first)");
-        let said = ask_num("How many times did YOU press A in step 1? (Enter = 100)").unwrap_or(100.0);
+        heading("Pad check finished — one question (switch to this window first)");
+        let said = ask_num("Roughly how many times did you press A in step 1? (Enter to skip)");
         let per_second = shared.per_second.lock().unwrap().clone();
         // Drop the first second (thread start-up) from the rate statistics.
         let stats = rate_stats(per_second.get(1..).unwrap_or(&[]));
         let fg_pct = if fg_samples > 0 { f64::from(fg_resolve) * 100.0 / f64::from(fg_samples) } else { 0.0 };
         let hz_pass = stats.is_some_and(|s| s.p1 >= 200.0);
-        let taps_pass = f64::from(a_taps) == said;
+        let gaps_in = |step: &str| step_gaps.iter().find(|e| e.0 == step).map_or((0, 0), |e| (e.1, e.2));
+        let (tap_gaps, tap_missed) = gaps_in("taps");
+        let total_gaps: u32 = step_gaps.iter().map(|e| e.1).sum();
+        // Objective: every press was seen (no packet gaps while tapping) and every press has a release.
+        let taps_pass = a_taps > 0 && tap_gaps == 0 && a_releases == a_taps;
+        let no_missed_pass = total_gaps == 0;
         let focus_pass = fg_pct >= 95.0;
         say(&format!(
-            "Rate: {} · taps counted {a_taps} (you said {said}) · Resolve in front {fg_pct:.0}%",
+            "Rate: {} · A presses seen {a_taps} (released {a_releases}) · Resolve in front {fg_pct:.0}%",
             stats.map_or("n/a".into(), |s| format!(
                 "median {} Hz, 1st percentile {} Hz, min {} Hz",
                 s.median, s.p1, s.min
             ))
         ));
-        say(&format!("Result: rate {} · taps {} · Resolve focused {}", pf(hz_pass), pf(taps_pass), pf(focus_pass)));
+        say(&format!(
+            "Missed controller states: {tap_missed} while tapping, {} in total ({} changes seen)",
+            shared.packet_missed.load(Ordering::Relaxed),
+            shared.packet_changes.load(Ordering::Relaxed)
+        ));
+        say(&format!(
+            "Result: rate {} · taps {} · nothing missed {} · Resolve focused {}",
+            pf(hz_pass),
+            pf(taps_pass),
+            pf(no_missed_pass),
+            pf(focus_pass)
+        ));
         json!({
             "kind": "pad",
             "spike": "A",
@@ -474,14 +547,29 @@ mod win {
             "polls": shared.polls.load(Ordering::Relaxed),
             "disconnectedPolls": shared.disconnected_polls.load(Ordering::Relaxed),
             "packetChanges": shared.packet_changes.load(Ordering::Relaxed),
-            "packetSkips": shared.packet_skips.load(Ordering::Relaxed),
+            "packetMissed": shared.packet_missed.load(Ordering::Relaxed),
+            "packetGapsByStep": step_gaps.iter().map(|(s, n, m)| json!({"step": s, "gaps": n, "missed": m})).collect::<Vec<_>>(),
+            "packetGaps": gaps_listed,
+            "packetGapsListedMax": MAX_GAPS_LISTED,
             "resolveForegroundPct": fg_pct,
             "foregroundSamples": fg_samples,
-            "taps": {"counted": a_taps, "testerSaid": said},
+            "taps": {
+                "pressesSeen": a_taps,
+                "releasesSeen": a_releases,
+                "gapsWhileTapping": tap_gaps,
+                "missedWhileTapping": tap_missed,
+                "testerEstimate": said,
+            },
             "sweepMaxAbsAxes": sweep_max,
             "triggerMax": {"lt": lt_max, "rt": rt_max},
+            "buzzFelt": buzz_ok,
             "files": files,
-            "pass": {"hzP1AtLeast200": hz_pass, "taps": taps_pass, "resolveFocused95": focus_pass},
+            "pass": {
+                "hzP1AtLeast200": hz_pass,
+                "tapsNoGapsAndBalanced": taps_pass,
+                "noMissedStatesAnyStep": no_missed_pass,
+                "resolveFocused95": focus_pass,
+            },
         })
     }
 
@@ -546,7 +634,7 @@ mod win {
     }
 
     fn keys() -> Value {
-        heading("Keys check (about 15 minutes)");
+        heading("Keys check (about 20 minutes)");
         let pids = app_win::find_processes(RESOLVE);
         if pids.is_empty() {
             say("Resolve isn't running. Start DaVinci Resolve and run this check again.");
@@ -763,7 +851,7 @@ mod win {
     }
 
     fn wheel() -> Value {
-        heading("Color wheels check (about 15 minutes)");
+        heading("Color wheels check (about 20 minutes)");
         let Some(&slot) = pad_win::connected().first() else {
             say("Connect the Xbox controller first (it's used to mark points).");
             return json!({"kind": "wheel", "error": "no controller"});

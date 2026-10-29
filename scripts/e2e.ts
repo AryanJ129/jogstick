@@ -189,16 +189,22 @@ expectCombo('F13', 'override edit.pasteInsert → F13');
 
 // Shuttle forward.
 trigger(BTN.rt, 0.5, 600);
-expected.push({ kind: 'run', codes: ['KeyK', 'KeyL'], min: 2, why: 'shuttle forward' });
 
-// releaseAll with keys held: slow zone holds K + L.
+// releaseAll with keys held: slow zone holds K + L (checked through the injector's held state at
+// the mark). Its K/L downs follow the shuttle's with no other key between, so the walk takes both
+// as one run: a greedy match would give the first all of them.
 set(BTN.rt, 0.25);
 wait(500);
 mark('releaseAll');
 wait(300);
 set(BTN.rt, 0);
 wait(500);
-expected.push({ kind: 'run', codes: ['KeyK', 'KeyL'], min: 2, why: 'slow-zone K+L held' });
+expected.push({
+  kind: 'run',
+  codes: ['KeyK', 'KeyL'],
+  min: 4,
+  why: 'shuttle forward, then slow-zone K+L',
+});
 emit();
 
 const scriptPath = join(work, 'script.json');
@@ -329,6 +335,19 @@ interface KeyEv {
   mods: string;
 }
 
+const MODIFIER_KEYS = new Set([
+  'ControlLeft',
+  'ControlRight',
+  'ShiftLeft',
+  'ShiftRight',
+  'AltLeft',
+  'AltRight',
+  'SuperLeft',
+  'SuperRight',
+  'MetaLeft',
+  'MetaRight',
+]);
+
 function flags(mods: string): string[] {
   const m = /ModifiersState\((.*)\)/.exec(mods);
   if (!m?.[1] || m[1] === '0x0') return [];
@@ -376,7 +395,12 @@ function check(
     .filter((l) => l.startsWith('{'))
     .map((l) => JSON.parse(l) as { type: string } & Partial<KeyEv>)
     .filter((e): e is KeyEv => e.type === 'key');
-  const downs = events.filter((e) => e.pressed && !e.repeat);
+  // Windows reports a modifier as its own key event (ControlLeft down…up around the combo, location
+  // Left); macOS sends flagsChanged, which the harness doesn't log as keys. Either way the combo's
+  // modifiers are checked through each key's `mods` flags, so modifier keys are left out of the walk
+  // (they still count for "every key that went down came up").
+  const keyEvents = events.filter((e) => !MODIFIER_KEYS.has(e.physical));
+  const downs = keyEvents.filter((e) => e.pressed && !e.repeat);
   ok(downs.length > 0, `harness received key events (${downs.length} downs)`);
 
   // Walk the expected list against the harness's key-downs, in order.
@@ -401,7 +425,7 @@ function check(
   const extra = downs.slice(i).map((d) => d.physical);
   ok(extra.length === 0, `no unexpected keys (${extra.length} extra: ${extra.join(' ')})`);
 
-  const standard = events.every((e) => e.location === 'Standard');
+  const standard = keyEvents.every((e) => e.location === 'Standard');
   ok(standard, 'every key at the Standard location (no numpad arrows)');
   const down = new Set<string>();
   for (const e of events) {
@@ -440,7 +464,7 @@ function check(
 
   for (const [pass, what] of results) console.log(`${pass ? 'PASS' : 'FAIL'} ${what}`);
   const passed = results.filter(([p]) => p).length;
-  console.log(`e2e-mac: ${passed}/${results.length} checks passed`);
+  console.log(`e2e-${process.platform}: ${passed}/${results.length} checks passed`);
   process.exit(passed === results.length ? 0 : 1);
 }
 

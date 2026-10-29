@@ -437,13 +437,13 @@ function check(
   const h = held as { held: Held } | null;
   const heldKL = !!h && h.held.keys.includes('KeyK') && h.held.keys.includes('KeyL');
   ok(heldKL, `before releaseAll the injector held K+L (${JSON.stringify(h?.held)})`);
-  const r = released as { held: Held; osHeld: Held } | null;
+  const r = released as { held: Held; osHeld: Held; settledMs?: number } | null;
   const empty = (x: Held | undefined) =>
     !!x && x.keys.length + x.mods.length + x.buttons.length === 0;
   const fmt = (x: unknown) => JSON.stringify(x);
   ok(
     empty(r?.held) && empty(r?.osHeld),
-    `after releaseAll nothing is down (injector ${fmt(r?.held)}, OS ${fmt(r?.osHeld)})`,
+    `after releaseAll nothing is down (injector ${fmt(r?.held)}, OS ${fmt(r?.osHeld)} after ${r?.settledMs ?? '?'} ms)`,
   );
   ok(
     empty(done?.held) && empty(done?.osHeld),

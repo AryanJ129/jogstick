@@ -292,9 +292,20 @@ function runE2e(h: Host, n: Native, pad: ReplaySource): void {
             `E2E-HELD ${JSON.stringify({ held: n.heldState(), osHeld: n.osHeldState() })}`,
           );
           h.releaseAll('e2e mark');
-          console.log(
-            `E2E-RELEASED ${JSON.stringify({ held: n.heldState(), osHeld: n.osHeldState() })}`,
-          );
+          // macOS's session key state catches up only after the window server has taken the
+          // posted events, so it is polled (5 ms steps, at most 200 ms) and the wait reported.
+          const held = n.heldState();
+          const t0 = Date.now();
+          const settle = () => {
+            const osHeld = n.osHeldState();
+            const clear = osHeld.keys.length + osHeld.mods.length + osHeld.buttons.length === 0;
+            if (clear || Date.now() - t0 >= 200)
+              console.log(
+                `E2E-RELEASED ${JSON.stringify({ held, osHeld, settledMs: Date.now() - t0 })}`,
+              );
+            else setTimeout(settle, 5);
+          };
+          settle();
         }
       },
       done: () => {

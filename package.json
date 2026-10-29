@@ -14,7 +14,8 @@
     "lint": "eslint . && prettier --check .",
     "format": "prettier --write .",
     "engine:replay": "pnpm -F @jogstick/engine replay",
-    "e2e:mac": "tsx scripts/e2e-mac.ts",
+    "e2e": "tsx scripts/e2e.ts",
+    "package:app": "tsx scripts/package-app.ts",
     "brand:check": "tsx brand/scripts/brand-check.ts",
     "brand:icons": "tsx brand/scripts/tray-icons.ts"
   },

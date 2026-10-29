@@ -1,8 +1,11 @@
-// Phase 3 verification on the Mac: the real host (Electron, built) drives jogstick-harness.
+// Phase 3 verification: the real host (Electron, built) drives jogstick-harness, on the Mac and on
+// the Windows CI runner.
 //
-//   pnpm -F @jogstick/desktop build && pnpm e2e:mac
+//   pnpm -F @jogstick/native build && pnpm -F @jogstick/desktop build && pnpm e2e
+//   (Windows also needs the harness: cargo build --release --features harness --bins)
 //
-// 1. Opens the harness (scripts/harness-mac.sh --log) and brings it to the front.
+// 1. Opens the harness in --log mode and waits until it holds the front (macOS: signed first with
+//    scripts/harness-mac.sh --build, then opened, so it gets its own Accessibility entry).
 // 2. Runs the host with a generated pad script (JOGSTICK_E2E_SCRIPT), the gate pointed at the
 //    harness (JOGSTICK_GATE_APP) and a fresh <userData> (JOGSTICK_USER_DATA).
 // 3. Acts on the script's marks: writes keymap-overrides.json (hot reload, incl. an invalid file).
@@ -13,7 +16,7 @@
 // Mouse buttons/moves are not driven here (the cursor may be outside the harness window, and a
 // click would land in another app); the harness self-test covers mouse injection.
 import { spawn, execFileSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { appendFileSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -25,6 +28,8 @@ const root = join(import.meta.dirname, '..');
 const work = join(root, 'packages/native/target/e2e');
 mkdirSync(work, { recursive: true });
 const keymap = parseKeymap(resolveKeymap);
+const os = process.platform === 'win32' ? 'win32' : 'darwin';
+const require = createRequire(import.meta.url);
 
 // --- the pad script ---------------------------------------------------------------
 
@@ -49,17 +54,18 @@ const set = (i: number, v: number) => {
   emit();
 };
 const expectCommand = (id: string, why: string) => {
-  const r = resolveCommand(id, 'darwin', keymap);
+  const r = resolveCommand(id, os, keymap);
   if (!r.combo || r.combo.code === null) return; // unbound: nothing must arrive
-  expected.push({ kind: 'key', code: r.combo.code, mods: macMods(r.combo.mods), why });
+  expected.push({ kind: 'key', code: r.combo.code, mods: winitMods(r.combo.mods), why });
 };
 const expectCombo = (combo: string, why: string) => {
   const c = parseCombo(combo);
-  expected.push({ kind: 'key', code: c.code ?? '', mods: macMods(c.mods), why });
+  expected.push({ kind: 'key', code: c.code ?? '', mods: winitMods(c.mods), why });
 };
-function macMods(mods: string[]): string[] {
+/** Our modifier names → winit's ModifiersState flags as the harness prints them. */
+function winitMods(mods: string[]): string[] {
   const map: Record<string, string> = {
-    Mod: 'SUPER',
+    Mod: os === 'darwin' ? 'SUPER' : 'CONTROL',
     Cmd: 'SUPER',
     Ctrl: 'CONTROL',
     Shift: 'SHIFT',
@@ -203,13 +209,38 @@ writeFileSync(scriptPath, JSON.stringify({ steps }));
 const harnessOut = join(root, 'packages/native/target/harness-logs/stdout.log');
 const userData = mkdtempSync(join(tmpdir(), 'jogstick-e2e-'));
 const overrides = join(userData, 'keymap-overrides.json');
-const HARNESS = 'dev.jogstick.harness';
+// What the gate sees: the bundle id on macOS, the exe name on Windows.
+const HARNESS = os === 'darwin' ? 'dev.jogstick.harness' : 'jogstick-harness.exe';
 
+/** macOS only; on Windows the harness focuses its own window at creation. */
 function activateHarness() {
-  execFileSync('osascript', ['-e', `tell application id "${HARNESS}" to activate`]);
+  if (os === 'darwin')
+    execFileSync('osascript', ['-e', `tell application id "${HARNESS}" to activate`]);
 }
 
-const native = createRequire(import.meta.url)(join(root, 'packages/native/index.js')) as {
+/** Opens the harness in --log mode with its stdout going to `harnessOut`. */
+function openHarness() {
+  if (os === 'darwin') {
+    // Sign first (SecurityAgent flashes while the key is used), then open the signed app.
+    execFileSync('sh', [join(root, 'scripts/harness-mac.sh'), '--build'], { stdio: 'ignore' });
+    const app = join(root, 'packages/native/target/JogstickHarness.app');
+    return spawn('open', ['-W', '-n', '--stdout', harnessOut, app, '--args', '--log'], {
+      stdio: 'ignore',
+    });
+  }
+  const exe = join(root, 'packages/native/target/release/jogstick-harness.exe');
+  const child = spawn(exe, ['--log'], { stdio: ['ignore', 'pipe', 'inherit'] });
+  child.stdout.on('data', (b: Buffer) => appendFileSync(harnessOut, b));
+  return child;
+}
+
+function closeHarness(child: ReturnType<typeof spawn>) {
+  if (os === 'darwin')
+    execFileSync('pkill', ['-f', 'JogstickHarness.app/Contents/MacOS/jogstick-harness']);
+  else child.kill();
+}
+
+const native = require(join(root, 'packages/native/index.js')) as {
   frontmostApp(): { id: string } | null;
 };
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -218,8 +249,8 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 async function harnessSettled(): Promise<boolean> {
   let since: number | null = null;
   for (let i = 0; i < 300; i++) {
-    const front = native.frontmostApp()?.id;
-    if (front === HARNESS) {
+    const front = native.frontmostApp()?.id.toLowerCase();
+    if (front === HARNESS.toLowerCase()) {
       since ??= Date.now();
       if (Date.now() - since >= 1000) return true;
     } else {
@@ -233,21 +264,18 @@ async function harnessSettled(): Promise<boolean> {
 
 async function main() {
   console.log(`script: ${steps.length} steps, ${t} ms; userData ${userData}`);
-  // Sign first (SecurityAgent flashes while the key is used), then open the signed app.
-  execFileSync('sh', [join(root, 'scripts/harness-mac.sh'), '--build'], { stdio: 'ignore' });
   mkdirSync(dirname(harnessOut), { recursive: true });
   writeFileSync(harnessOut, '');
-  const app = join(root, 'packages/native/target/JogstickHarness.app');
-  const harness = spawn('open', ['-W', '-n', '--stdout', harnessOut, app, '--args', '--log'], {
-    stdio: 'ignore',
-  });
+  const harness = openHarness();
   await sleep(500);
   if (!(await harnessSettled())) {
     console.log(`ABORT: the harness never stayed in front (now: ${native.frontmostApp()?.id})`);
     process.exit(2);
   }
 
-  const host = spawn(join(root, 'node_modules/.bin/electron'), [join(root, 'apps/desktop')], {
+  // The electron package exports the path of its binary.
+  const electron = require('electron') as string;
+  const host = spawn(electron, [join(root, 'apps/desktop')], {
     env: {
       ...process.env,
       JOGSTICK_E2E_SCRIPT: scriptPath,
@@ -267,18 +295,18 @@ async function main() {
       const name = line.slice(9);
       if (name === 'ready' || name === 'go') activateHarness();
       if (name === 'override-enter')
-        writeFileSync(overrides, JSON.stringify({ 'edit.pasteInsert': { darwin: 'Enter' } }));
+        writeFileSync(overrides, JSON.stringify({ 'edit.pasteInsert': { [os]: 'Enter' } }));
       if (name === 'override-bad')
-        writeFileSync(overrides, JSON.stringify({ 'edit.pasteInsert': { darwin: 'Nope+Key' } }));
+        writeFileSync(overrides, JSON.stringify({ 'edit.pasteInsert': { [os]: 'Nope+Key' } }));
       if (name === 'override-f13')
-        writeFileSync(overrides, JSON.stringify({ 'edit.pasteInsert': { darwin: 'F13' } }));
+        writeFileSync(overrides, JSON.stringify({ 'edit.pasteInsert': { [os]: 'F13' } }));
     } else if (line.startsWith('E2E-HELD ')) held = JSON.parse(line.slice(9));
     else if (line.startsWith('E2E-RELEASED ')) released = JSON.parse(line.slice(13));
     else if (line.startsWith('E2E-DONE ')) done = JSON.parse(line.slice(9));
   });
   const code = await new Promise<number | null>((r) => host.on('exit', r));
   await new Promise((r) => setTimeout(r, 300));
-  execFileSync('pkill', ['-f', 'JogstickHarness.app/Contents/MacOS/jogstick-harness']);
+  closeHarness(harness);
   await new Promise((r) => harness.on('exit', r));
   writeFileSync(join(work, 'host.log'), lines.join('\n'));
 
@@ -398,14 +426,15 @@ function check(
     `at the end nothing is down (OS ${fmt(done?.osHeld)})`,
   );
   const pulses = done?.rumbles.filter((k) => k === 'pulse').length ?? 0;
-  ok(pulses === 2, `two mode-switch buzzes (${done?.rumbles.join() || 'none'})`);
+  ok(pulses === 3, `connect buzz + two mode-switch buzzes (${done?.rumbles.join() || 'none'})`);
   const rejected = hostLines.some(
     (l) => l.includes('keymap-overrides.json') && l.includes('keeping the last good version'),
   );
   ok(rejected, 'invalid override file rejected in the Console');
   const reloads = hostLines.filter((l) => l.includes('reloaded keymap-overrides.json')).length;
   ok(reloads === 2, `two valid reloads in the Console (${reloads})`);
-  const opened = hostLines.some((l) => l.includes(`[gate] open (open, ${HARNESS})`));
+  const want = `[gate] open (open, ${HARNESS})`.toLowerCase();
+  const opened = hostLines.some((l) => l.toLowerCase().includes(want));
   ok(opened, 'gate opened for the harness');
   ok(code === 0, `host exited 0 (${code})`);
 

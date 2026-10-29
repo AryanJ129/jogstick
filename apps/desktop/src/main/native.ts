@@ -1,4 +1,5 @@
 import { app } from 'electron';
+import { existsSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
 
@@ -55,10 +56,16 @@ export interface Native {
   padList(): number[];
 }
 
+/**
+ * The packaged layout (scripts/package-app.ts) is detected by its files, not `app.isPackaged`
+ * (which only looks at the executable's name).
+ */
+export const packaged = existsSync(join(process.resourcesPath, 'native', 'index.js'));
+
 /** Packaged: `resources/native/index.js` (napi loader + `.node` side by side). Dev: the workspace package. */
 export function loadNative(): Native {
   const require = createRequire(import.meta.url);
-  const path = app.isPackaged
+  const path = packaged
     ? join(process.resourcesPath, 'native', 'index.js')
     : join(app.getAppPath(), '..', '..', 'packages', 'native', 'index.js');
   return require(path) as Native;

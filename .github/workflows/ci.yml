@@ -36,6 +36,7 @@ jobs:
         run: pnpm audit --audit-level high
       - run: pnpm -F @jogstick/engine -F @jogstick/desktop typecheck
       - run: pnpm -F @jogstick/engine test
+      - run: pnpm -F @jogstick/desktop test
       - run: pnpm -F @jogstick/desktop build
 
   native:
@@ -75,3 +76,20 @@ jobs:
       - name: Harness self-test (Windows)
         if: matrix.os == 'windows-latest'
         run: ./target/release/jogstick-harness.exe --self-test
+      # The real host (Electron + addon + queue + gate) driving the harness: every Edit-mode
+      # command, layers, jog arrows with KEYEVENTF_EXTENDEDKEY, overrides hot reload, releaseAll.
+      - name: Host e2e against the harness (Windows)
+        if: matrix.os == 'windows-latest'
+        working-directory: .
+        run: |
+          pnpm -F @jogstick/desktop build
+          pnpm e2e
+      - name: Upload e2e logs
+        if: always() && matrix.os == 'windows-latest'
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-logs-windows
+          path: |
+            packages/native/target/e2e/
+            packages/native/target/harness-logs/
+          if-no-files-found: ignore

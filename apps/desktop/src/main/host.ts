@@ -220,6 +220,8 @@ export class Host {
         this.padConnected = true;
         this.padName = name;
         this.deps.log.add('pad', `connected: ${name}`);
+        // One buzz on connect, so the user knows Jogstick has the pad (quick-start step 2).
+        safe(this.deps.log, 'rumble', () => this.deps.pad.rumble('pulse'), undefined);
         this.emitStatus();
       },
       disconnected: () => {

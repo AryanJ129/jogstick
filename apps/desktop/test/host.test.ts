@@ -209,12 +209,13 @@ describe('Host', () => {
     expect(host.status().pad.connected).toBe(false);
   });
 
-  it('a mode switch (View+Menu chord) buzzes the pad and changes mode', () => {
+  it('the pad buzzes once on connect, and again on a mode switch (View+Menu chord)', () => {
+    expect(pad.rumbles).toEqual(['pulse']);
     fake.setFront({});
     press(VIEW, MENU);
     vi.advanceTimersByTime(100);
     expect(host.status().mode).toBe('color');
-    expect(pad.rumbles).toEqual(['pulse']);
+    expect(pad.rumbles).toEqual(['pulse', 'pulse']);
     release(VIEW, MENU);
   });
 

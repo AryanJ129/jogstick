@@ -5,7 +5,7 @@ import resolveDefault from '../../../../packages/profiles/resolve-default.json';
 import resolveKeymap from '../../../../packages/profiles/resolve-keymap.json';
 import { Host } from './host';
 import { Log } from './log';
-import { loadNative } from './native';
+import { loadNative, packaged } from './native';
 import type { Native } from './native';
 import { Overlay, overlayView } from './overlay';
 import { GamepadSource, preloadPath, ReplaySource, XInputSource } from './pad';
@@ -48,7 +48,7 @@ function loadPage(win: BrowserWindow, page: string): Promise<void> {
 }
 
 function resourceDir(name: string): string {
-  return app.isPackaged
+  return packaged
     ? join(process.resourcesPath, name)
     : join(app.getAppPath(), '..', '..', 'brand', name);
 }

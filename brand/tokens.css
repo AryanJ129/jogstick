@@ -1,0 +1,153 @@
+/*
+ * Jogstick design tokens. Direction: "Tally". See BRAND_KIT.md.
+ * Dark is the default; set data-theme="light" on <html> for the light variant.
+ * The overlay always uses the --overlay-* tokens (a dark chip), whatever the theme.
+ * Accent (yellow) only ever means "live mode": the active mode/layer, a live binding, the live
+ * tray state. Primary buttons, focus rings and decoration use the neutral --primary / --focus.
+ * scripts/brand-check.ts parses this file: keep colors as 6-digit hex, one per line.
+ */
+
+@font-face {
+  font-family: 'Archivo';
+  src: url('./fonts/archivo-latin-var.woff2') format('woff2');
+  font-weight: 100 900;
+  font-stretch: 62% 125%;
+  font-style: normal;
+  font-display: block;
+}
+
+@font-face {
+  font-family: 'JetBrains Mono';
+  src: url('./fonts/jetbrains-mono-latin-var.woff2') format('woff2');
+  font-weight: 100 800;
+  font-style: normal;
+  font-display: block;
+}
+
+:root {
+  color-scheme: dark;
+
+  /* Color: dark (default) */
+  --bg: #141416;
+  --surface: #1c1c1f;
+  --surface-2: #26262a;
+  --border: #34343a;
+  --text: #eceae4;
+  --text-muted: #9a988f;
+  --accent: #ffc42e;
+  --accent-text: #ffc42e;
+  --accent-edge: #ffc42e;
+  --accent-fg: #141416;
+  --focus: #eceae4;
+  --primary: #eceae4;
+  --primary-fg: #141416;
+  --success: #4cc38a;
+  --warning: #ff7a1f;
+  --danger: #ff5f7a;
+
+  /* Keycap surfaces (the only tactile treatment) */
+  --key-top: #2c2c31;
+  --key-face: #232327;
+  --key-edge-hi: #3d3d44;
+  --key-edge-lo: #0c0c0e;
+
+  /* Overlay: same in both themes, always a dark chip */
+  --overlay-chip: rgb(20 20 22 / 0.9);
+  --overlay-chip-border: rgb(255 255 255 / 0.08);
+  --overlay-live: #ffc42e;
+  --overlay-text: #eceae4;
+  --overlay-warning: #ff7a1f;
+  --overlay-danger: #ff5f7a;
+
+  /* Typography */
+  --font-display: 'Archivo', 'Segoe UI', system-ui, sans-serif;
+  --font-body: 'Archivo', 'Segoe UI', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'Cascadia Mono', Menlo, monospace;
+  --stretch-label: 125%;
+  --stretch-body: 100%;
+  --tracking-label: 0.08em;
+  --tracking-display: -0.01em;
+
+  /* Type scale: 1.2 ratio from 14px (desktop app, not a website) */
+  --text-2xs: 0.6875rem;
+  --text-xs: 0.75rem;
+  --text-sm: 0.8125rem;
+  --text-base: 0.875rem;
+  --text-lg: 1.0625rem;
+  --text-xl: 1.25rem;
+  --text-2xl: 1.5rem;
+  --text-3xl: 1.8125rem;
+  --text-4xl: 2.1875rem;
+  --text-5xl: 2.625rem;
+  --leading-tight: 1.1;
+  --leading-body: 1.5;
+
+  /* Spacing: 4px base */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-12: 48px;
+  --space-16: 64px;
+
+  /* Radius: keycaps are slightly soft, panels are square-ish */
+  --radius-xs: 2px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+  --radius-full: 9999px;
+
+  /* Motion: snaps like key travel; nothing loops */
+  --ease-snap: cubic-bezier(0.2, 0, 0, 1);
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --dur-press: 80ms;
+  --dur-snap: 120ms;
+  --dur-panel: 180ms;
+}
+
+[data-theme='light'] {
+  color-scheme: light;
+
+  --bg: #f2f1ec;
+  --surface: #fafaf7;
+  --surface-2: #e7e5de;
+  --border: #d3d0c7;
+  --text: #18181b;
+  --text-muted: #5e5c55;
+  --accent: #ffc42e;
+  --accent-text: #7a5600;
+  --accent-edge: #7a5600;
+  --accent-fg: #18181b;
+  --focus: #18181b;
+  --primary: #18181b;
+  --primary-fg: #fafaf7;
+  --success: #176a43;
+  --warning: #a34000;
+  --danger: #c4183f;
+
+  --key-top: #ffffff;
+  --key-face: #f4f3ee;
+  --key-edge-hi: #ffffff;
+  --key-edge-lo: #b9b6ac;
+}
+
+/* Reduced motion: snaps become instant. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-press: 0ms;
+    --dur-snap: 0ms;
+    --dur-panel: 0ms;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0ms !important;
+    scroll-behavior: auto !important;
+  }
+}

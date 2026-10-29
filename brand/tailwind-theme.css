@@ -1,0 +1,61 @@
+/*
+ * Tailwind v4 theme for the renderer. Import after tokens.css:
+ *   @import 'tailwindcss';
+ *   @import '../../../brand/tokens.css';
+ *   @import '../../../brand/tailwind-theme.css';
+ * `inline` makes utilities reference the variables, so data-theme="light" switches them live.
+ */
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-border: var(--border);
+  --color-text: var(--text);
+  --color-text-muted: var(--text-muted);
+  --color-accent: var(--accent);
+  --color-accent-text: var(--accent-text);
+  --color-accent-edge: var(--accent-edge);
+  --color-accent-fg: var(--accent-fg);
+  --color-primary: var(--primary);
+  --color-primary-fg: var(--primary-fg);
+  --color-focus: var(--focus);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+  --color-overlay-chip: var(--overlay-chip);
+  --color-overlay-live: var(--overlay-live);
+  --color-overlay-text: var(--overlay-text);
+  --color-overlay-warning: var(--overlay-warning);
+  --color-overlay-danger: var(--overlay-danger);
+
+  --font-sans: var(--font-body);
+  --spacing: 4px;
+}
+
+/*
+ * Names Tailwind shares with tokens.css get literal values: `--x: var(--x)` would be a cycle.
+ * They must equal tokens.css exactly; `pnpm brand:check` fails if they drift.
+ */
+@theme {
+  --font-display: 'Archivo', 'Segoe UI', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'Cascadia Mono', Menlo, monospace;
+
+  --text-2xs: 0.6875rem;
+  --text-xs: 0.75rem;
+  --text-sm: 0.8125rem;
+  --text-base: 0.875rem;
+  --text-lg: 1.0625rem;
+  --text-xl: 1.25rem;
+  --text-2xl: 1.5rem;
+  --text-3xl: 1.8125rem;
+  --text-4xl: 2.1875rem;
+  --text-5xl: 2.625rem;
+
+  --radius-xs: 2px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+
+  --ease-snap: cubic-bezier(0.2, 0, 0, 1);
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+}

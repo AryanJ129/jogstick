@@ -172,7 +172,8 @@ Resolve. Clear space: the cap height on every side. Minimum size: 14 px cap heig
 - Windows: `tray/win/dark/` and `tray/win/light/`, each `<state>.ico` (16/24/32) plus
   `<state>.png`, `@1.5x`, `@2x`. The light-taskbar set adds a 1 px (at 16 px) `#141416` stroke
   around every shape, because a yellow fill alone disappears on a light taskbar. The host picks the
-  set from `nativeTheme.shouldUseDarkColorsForSystemIcons` and swaps on `nativeTheme` `updated`.
+  set from `nativeTheme.shouldUseDarkColorsForSystemIntegratedUI` (the system theme, which the
+  taskbar follows) and swaps on `nativeTheme` `updated`.
 - macOS: `tray/mac/<state>Template.png` and `@2x`, black + alpha; macOS tints template images, so
   states differ by shape only.
 

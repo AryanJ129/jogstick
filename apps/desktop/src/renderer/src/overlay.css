@@ -1,0 +1,91 @@
+/* BRAND_KIT §3.2: always its own dark chip, whatever the theme. */
+:root {
+  --overlay-chip-solid: #141416;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: transparent;
+  overflow: hidden;
+  user-select: none;
+}
+
+body {
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+  padding: 8px;
+  box-sizing: border-box;
+}
+body[data-corner='topLeft'],
+body[data-corner='bottomLeft'] {
+  justify-content: flex-start;
+}
+body[data-corner='bottomLeft'],
+body[data-corner='bottomRight'] {
+  align-items: flex-end;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  padding: 0 12px;
+  box-sizing: border-box;
+  background: var(--overlay-chip);
+  border: 1px solid var(--overlay-chip-border);
+  border-radius: 4px;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-stretch: 125%;
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  opacity: 1;
+  transition:
+    opacity var(--dur-panel) var(--ease-out),
+    border-color var(--dur-snap) var(--ease-snap);
+}
+.chip[hidden] {
+  display: none;
+}
+.chip.faded {
+  opacity: 0;
+}
+
+.chip[data-tone='live'] {
+  color: var(--overlay-live);
+}
+.chip[data-tone='warning'] {
+  color: var(--overlay-warning);
+}
+.chip[data-tone='danger'] {
+  color: var(--overlay-danger);
+}
+/* Mode switch: the edge lights for a moment (live only, so yellow still means live). */
+.chip[data-tone='live'].flash {
+  border-color: var(--overlay-live);
+}
+
+.icon {
+  display: inline-flex;
+  width: 12px;
+  height: 12px;
+}
+.icon svg {
+  width: 12px;
+  height: 12px;
+}
+
+.label {
+  display: inline-flex;
+  gap: 6px;
+}
+.sep {
+  color: var(--overlay-text);
+  opacity: 0.5;
+}

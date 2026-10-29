@@ -13,7 +13,9 @@
     "typecheck": "pnpm -r typecheck",
     "lint": "eslint . && prettier --check .",
     "format": "prettier --write .",
-    "engine:replay": "pnpm -F @jogstick/engine replay"
+    "engine:replay": "pnpm -F @jogstick/engine replay",
+    "brand:check": "tsx brand/scripts/brand-check.ts",
+    "brand:icons": "tsx brand/scripts/tray-icons.ts"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

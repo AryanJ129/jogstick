@@ -1,0 +1,650 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Jogstick brand preview</title>
+    <link rel="stylesheet" href="./tokens.css" />
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font-family: var(--font-body);
+        font-size: var(--text-base);
+        line-height: var(--leading-body);
+      }
+      main {
+        max-width: 1180px;
+        margin: 0 auto;
+        padding: var(--space-8) var(--space-6) var(--space-16);
+      }
+      section {
+        border-top: 1px solid var(--border);
+        padding: var(--space-8) 0;
+      }
+      .label {
+        font-family: var(--font-display);
+        font-stretch: var(--stretch-label);
+        font-weight: 700;
+        font-size: var(--text-2xs);
+        letter-spacing: var(--tracking-label);
+        text-transform: uppercase;
+        color: var(--text-muted);
+      }
+      h2 {
+        margin: 0 0 var(--space-4);
+      }
+      .mono {
+        font-family: var(--font-mono);
+        font-size: var(--text-sm);
+        font-variant-numeric: tabular-nums;
+      }
+      .muted {
+        color: var(--text-muted);
+      }
+      .row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--space-4);
+        align-items: center;
+      }
+      .grid {
+        display: grid;
+        gap: var(--space-4);
+      }
+
+      /* Header */
+      header {
+        display: flex;
+        justify-content: space-between;
+        align-items: end;
+        gap: var(--space-6);
+        padding-bottom: var(--space-8);
+      }
+      .wordmark {
+        font-family: var(--font-display);
+        font-stretch: var(--stretch-label);
+        font-weight: 800;
+        font-size: var(--text-5xl);
+        letter-spacing: 0.02em;
+        line-height: 1;
+        margin: 0;
+      }
+      .wordmark .lamp {
+        display: inline-block;
+        width: 0.34em;
+        height: 0.34em;
+        border-radius: var(--radius-full);
+        box-shadow: inset 0 0 0 0.07em var(--text-muted);
+        vertical-align: 0.42em;
+        margin-left: 0.12em;
+      }
+      /* The lamp is lit only where Jogstick is live (the app header while the pad drives Resolve). */
+      .wordmark .lamp.lit {
+        background: var(--accent);
+        box-shadow: inset 0 0 0 0.07em var(--accent-edge);
+      }
+      .direction {
+        max-width: 60ch;
+        margin: var(--space-3) 0 0;
+        color: var(--text-muted);
+      }
+
+      /* Keycaps: the only tactile treatment */
+      .key {
+        font: inherit;
+        font-family: var(--font-display);
+        font-stretch: var(--stretch-label);
+        font-weight: 700;
+        font-size: var(--text-xs);
+        letter-spacing: var(--tracking-label);
+        text-transform: uppercase;
+        color: var(--text);
+        background: linear-gradient(var(--key-top), var(--key-face));
+        border: 1px solid var(--key-edge-lo);
+        border-radius: var(--radius-md);
+        box-shadow:
+          inset 0 1px 0 var(--key-edge-hi),
+          0 1px 0 var(--key-edge-lo);
+        padding: var(--space-2) var(--space-4);
+        min-height: 32px;
+        cursor: pointer;
+        transition:
+          transform var(--dur-press) var(--ease-snap),
+          box-shadow var(--dur-press) var(--ease-snap);
+      }
+      .key:active,
+      .key[aria-pressed='true'] {
+        transform: translateY(1px);
+        box-shadow: inset 0 1px 2px var(--key-edge-lo);
+      }
+      .key:focus-visible {
+        outline: 2px solid var(--focus);
+        outline-offset: 2px;
+      }
+      .key.primary {
+        background: var(--primary);
+        color: var(--primary-fg);
+        border-color: var(--primary);
+        box-shadow: 0 1px 0 var(--key-edge-lo);
+      }
+      .key.live {
+        color: var(--accent-text);
+        box-shadow:
+          inset 0 1px 0 var(--key-edge-hi),
+          inset 0 -2px 0 var(--accent),
+          0 1px 0 var(--key-edge-lo);
+      }
+      .card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-lg);
+        padding: var(--space-4);
+      }
+      .field {
+        display: grid;
+        gap: var(--space-1);
+      }
+      .field input {
+        font: inherit;
+        font-family: var(--font-mono);
+        color: var(--text);
+        background: var(--surface-2);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-sm);
+        padding: var(--space-2) var(--space-3);
+      }
+      .field input:focus-visible {
+        outline: 2px solid var(--focus);
+        outline-offset: 1px;
+      }
+
+      /* Swatches */
+      .swatches {
+        grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+      }
+      .swatch {
+        border: 1px solid var(--border);
+        border-radius: var(--radius-md);
+        overflow: hidden;
+        background: var(--surface);
+      }
+      .swatch .chip {
+        height: 56px;
+      }
+      .swatch div:last-child {
+        padding: var(--space-2) var(--space-3);
+      }
+
+      /* Overlay: always the dark chip, never themed */
+      .video {
+        position: relative;
+        border-radius: var(--radius-md);
+        overflow: hidden;
+        min-height: 150px;
+        padding: var(--space-4);
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--space-3);
+        align-content: start;
+      }
+      .bars {
+        background: linear-gradient(
+          90deg,
+          #ffffff 0 14.28%,
+          #ffc42e 14.28% 28.56%,
+          #00f0f0 28.56% 42.84%,
+          #00e000 42.84% 57.12%,
+          #ff00ff 57.12% 71.4%,
+          #ff2020 71.4% 85.68%,
+          #2030ff 85.68% 100%
+        );
+      }
+      .white {
+        background: #ffffff;
+      }
+      .black {
+        background: #000000;
+      }
+      .overlay {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        height: 30px;
+        padding: 0 12px 0 10px;
+        background: var(--overlay-chip);
+        border: 1px solid var(--overlay-chip-border);
+        border-radius: var(--radius-sm);
+        font-family: var(--font-display);
+        font-stretch: var(--stretch-label);
+        font-weight: 700;
+        font-size: 13px;
+        letter-spacing: var(--tracking-label);
+        text-transform: uppercase;
+        color: var(--overlay-text);
+        white-space: nowrap;
+      }
+      .overlay svg {
+        width: 14px;
+        height: 14px;
+        flex: none;
+      }
+      .overlay .sep {
+        color: var(--overlay-text);
+        opacity: 0.5;
+      }
+      .overlay.live {
+        color: var(--overlay-live);
+      }
+      .overlay.live .layer {
+        color: var(--overlay-live);
+      }
+      .overlay.warning {
+        color: var(--overlay-warning);
+      }
+      .overlay.danger {
+        color: var(--overlay-danger);
+      }
+      .cvd-deutan {
+        filter: url(#deutan);
+      }
+      .cvd-protan {
+        filter: url(#protan);
+      }
+
+      /* Tray mock-ups */
+      .taskbar {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        height: 40px;
+        padding: 0 14px;
+        border-radius: var(--radius-sm);
+        font-family: 'Segoe UI', system-ui, sans-serif;
+        font-size: 12px;
+      }
+      .taskbar.win-dark {
+        background: #202020;
+        color: #ffffff;
+      }
+      .taskbar.win-light {
+        background: #f3f3f3;
+        color: #000000;
+        border: 1px solid #d0d0d0;
+      }
+      .taskbar.mac-light {
+        height: 24px;
+        background: #e8e8e8;
+        color: #000000;
+      }
+      .taskbar.mac-dark {
+        height: 24px;
+        background: #2a2a2c;
+        color: #ffffff;
+      }
+      .taskbar.mac-dark img {
+        filter: invert(1);
+      }
+      .zoom img {
+        width: 64px;
+        height: 64px;
+        image-rendering: pixelated;
+      }
+      .zoom figure {
+        margin: 0;
+        display: grid;
+        gap: var(--space-1);
+        justify-items: center;
+      }
+      .zoom .tile {
+        padding: 8px;
+        border-radius: var(--radius-sm);
+      }
+      .theme-switch {
+        display: flex;
+        gap: var(--space-2);
+      }
+      .spacing .bar {
+        display: inline-block;
+        height: 12px;
+        background: var(--text-muted);
+        border-radius: var(--radius-xs);
+      }
+      .radius div {
+        width: 56px;
+        height: 56px;
+        background: var(--surface-2);
+        border: 1px solid var(--border);
+      }
+      .motion-demo {
+        width: 40px;
+        height: 40px;
+        border-radius: var(--radius-md);
+        background: var(--surface-2);
+        border: 1px solid var(--border);
+        transition: transform var(--dur-snap) var(--ease-snap);
+      }
+      .motion-demo.on {
+        transform: translateX(160px);
+        background: var(--primary);
+      }
+    </style>
+  </head>
+  <body>
+    <svg width="0" height="0" style="position: absolute" aria-hidden="true">
+      <!-- Machado et al. 2009, severity 1.0; CSS filters run in linearRGB by default. -->
+      <filter id="deutan">
+        <feColorMatrix
+          type="matrix"
+          values="0.367322 0.860646 -0.227968 0 0  0.280085 0.672501 0.047413 0 0  -0.01182 0.04294 0.968881 0 0  0 0 0 1 0"
+        />
+      </filter>
+      <filter id="protan">
+        <feColorMatrix
+          type="matrix"
+          values="0.152286 1.052583 -0.204868 0 0  0.114503 0.786281 0.099216 0 0  -0.003882 -0.048116 1.051998 0 0  0 0 0 1 0"
+        />
+      </filter>
+      <symbol id="i-lamp" viewBox="0 0 14 14">
+        <circle cx="7" cy="7" r="4.5" fill="currentColor" />
+      </symbol>
+      <symbol id="i-pause" viewBox="0 0 14 14">
+        <rect x="2.5" y="2" width="3" height="10" rx="0.8" fill="currentColor" />
+        <rect x="8.5" y="2" width="3" height="10" rx="0.8" fill="currentColor" />
+      </symbol>
+      <symbol id="i-target" viewBox="0 0 14 14">
+        <circle cx="7" cy="7" r="4.6" fill="none" stroke="currentColor" stroke-width="1.6" />
+        <path d="M7 0.5v3M7 10.5v3M0.5 7h3M10.5 7h3" stroke="currentColor" stroke-width="1.6" />
+      </symbol>
+      <symbol id="i-error" viewBox="0 0 14 14">
+        <circle cx="7" cy="7" r="6" fill="currentColor" />
+        <path
+          d="M4.6 4.6l4.8 4.8M9.4 4.6l-4.8 4.8"
+          stroke="#141416"
+          stroke-width="1.8"
+          stroke-linecap="round"
+        />
+      </symbol>
+    </svg>
+
+    <main>
+      <header>
+        <div>
+          <p class="label">Brand kit · Direction "Tally" · approved 2026-10-29</p>
+          <h1 class="wordmark">JOGSTICK<span class="lamp" aria-hidden="true"></span></h1>
+          <p class="wordmark" style="font-size: var(--text-xl); margin-top: var(--space-2)">
+            JOGSTICK<span class="lamp lit" aria-hidden="true"></span>
+            <span class="label" style="vertical-align: middle">← app header while live</span>
+          </p>
+          <p class="direction">
+            An industrial control surface: keycap deck on charcoal, engraved labels, numbers in
+            mono, and one broadcast-tally yellow that only ever means <em>live mode</em>.
+          </p>
+        </div>
+        <div class="theme-switch" role="group" aria-label="Theme">
+          <button class="key" data-set-theme="dark" aria-pressed="true">Dark</button>
+          <button class="key" data-set-theme="light" aria-pressed="false">Light</button>
+        </div>
+      </header>
+
+      <section>
+        <p class="label">1 · Overlay label</p>
+        <h2>Always on its own dark chip (90 %), over any video</h2>
+        <p class="muted">
+          Yellow = the live mode and layer. Warnings (orange) and errors (pink-red) always carry an
+          icon and their own words, never the accent.
+        </p>
+        <div class="grid">
+          <div class="video bars" id="overlay-states">
+            <span class="overlay live"
+              ><svg><use href="#i-lamp" /></svg>Edit</span
+            >
+            <span class="overlay live"
+              ><svg><use href="#i-lamp" /></svg>Edit<span class="sep">·</span
+              ><span class="layer">Trim</span></span
+            >
+            <span class="overlay live"
+              ><svg><use href="#i-lamp" /></svg>Color<span class="sep">·</span
+              ><span class="layer">Lift</span></span
+            >
+            <span class="overlay warning"
+              ><svg><use href="#i-pause" /></svg>Paused</span
+            >
+            <span class="overlay warning"
+              ><svg><use href="#i-target" /></svg>Recalibrate</span
+            >
+            <span class="overlay danger"
+              ><svg><use href="#i-error" /></svg>Controller lost</span
+            >
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <p class="label">2 · Separation check</p>
+        <h2>Accent, warning and danger side by side at overlay size</h2>
+        <p class="muted">
+          Same chips over white, black and the yellow bar, then as seen with deuteranopia and
+          protanopia. Numbers: <code class="mono">pnpm brand:check</code> (OKLab ΔE live↔warning
+          0.17, live↔danger 0.26, warning↔danger 0.12).
+        </p>
+        <div class="grid" id="separation"></div>
+      </section>
+
+      <section>
+        <p class="label">3 · Color</p>
+        <h2>Tokens (values read live from tokens.css)</h2>
+        <div class="grid swatches" id="swatches"></div>
+      </section>
+
+      <section>
+        <p class="label">4 · Type</p>
+        <h2>Archivo (wide for labels, normal for UI) + JetBrains Mono for values</h2>
+        <div class="grid">
+          <p class="wordmark" style="font-size: var(--text-4xl)">EDIT · TRIM</p>
+          <p style="font-size: var(--text-3xl); font-weight: 700; margin: 0">
+            Jog with the stick, shuttle with the triggers
+          </p>
+          <p style="font-size: var(--text-xl); font-weight: 600; margin: 0">
+            Status · Mapping · Commands · Profiles · Setup · Console
+          </p>
+          <p style="max-width: 70ch; margin: 0">
+            Body 14 px / 1.5. Jogstick only sends keys while DaVinci Resolve's main window is in
+            front and no dialog is open. Switch away and the pad goes quiet until you come back.
+          </p>
+          <p class="mono" style="margin: 0">
+            01:00:12:05 · 249.8 Hz p1 · lift 0.00 0.03 −0.01 −0.02 · Ctrl+Shift+[
+          </p>
+          <p class="label" style="margin: 0">Engraved label · 11 px · wide 125 % · +0.08em</p>
+        </div>
+      </section>
+
+      <section>
+        <p class="label">5 · Controls</p>
+        <h2>Keycaps, the one tactile treatment</h2>
+        <div class="row">
+          <button class="key primary">Start learn mode</button>
+          <button class="key">Cancel</button>
+          <button class="key live" aria-pressed="true">Edit</button>
+          <button class="key">Color</button>
+          <button class="key" aria-pressed="false" id="press-demo">Press me</button>
+        </div>
+        <div class="row" style="margin-top: var(--space-6); align-items: stretch">
+          <div class="card" style="min-width: 280px">
+            <p class="label" style="margin: 0 0 var(--space-2)">Status</p>
+            <p style="margin: 0">
+              <span style="color: var(--success)">●</span> Controller connected
+            </p>
+            <p style="margin: 0">
+              <span style="color: var(--accent-text)">●</span> Gate: Resolve main window
+            </p>
+            <p style="margin: 0; color: var(--warning)">▲ Steam may also be mapping your pad</p>
+            <p style="margin: 0; color: var(--danger)">✕ Resolve is running as administrator</p>
+          </div>
+          <div class="card field" style="min-width: 280px">
+            <label class="label" for="combo">Shortcut override · edit.pasteInsert</label>
+            <input id="combo" value="F13" />
+            <span class="muted" style="font-size: var(--text-xs)"
+              >Press the keys you set in Resolve's Keyboard Customization.</span
+            >
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <p class="label">6 · Spacing, radius, motion</p>
+        <div class="grid" style="grid-template-columns: repeat(auto-fit, minmax(300px, 1fr))">
+          <div class="spacing grid" style="gap: var(--space-2)">
+            <div><span class="bar" style="width: 4px"></span> <span class="mono">4</span></div>
+            <div><span class="bar" style="width: 8px"></span> <span class="mono">8</span></div>
+            <div><span class="bar" style="width: 12px"></span> <span class="mono">12</span></div>
+            <div><span class="bar" style="width: 16px"></span> <span class="mono">16</span></div>
+            <div><span class="bar" style="width: 24px"></span> <span class="mono">24</span></div>
+            <div><span class="bar" style="width: 32px"></span> <span class="mono">32</span></div>
+            <div><span class="bar" style="width: 48px"></span> <span class="mono">48</span></div>
+            <div><span class="bar" style="width: 64px"></span> <span class="mono">64</span></div>
+          </div>
+          <div class="row radius">
+            <div style="border-radius: var(--radius-xs)"></div>
+            <div style="border-radius: var(--radius-sm)"></div>
+            <div style="border-radius: var(--radius-md)"></div>
+            <div style="border-radius: var(--radius-lg)"></div>
+          </div>
+          <div class="grid">
+            <div class="motion-demo" id="motion-demo"></div>
+            <button class="key" id="motion-toggle" style="justify-self: start">
+              Snap (120 ms)
+            </button>
+            <span class="muted mono" id="motion-state"></span>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <p class="label">7 · Tray icons</p>
+        <h2>Windows: dark and light taskbar · macOS: template images</h2>
+        <p class="muted">
+          Live states (connected, color) are yellow; paused is warning orange, error is danger. On a
+          light taskbar every shape gets a dark stroke. macOS tints templates itself, so states
+          differ by shape. Shown at 1× and zoomed 4×.
+        </p>
+        <div class="grid" id="tray"></div>
+      </section>
+    </main>
+
+    <script>
+      const STATES = ['connected', 'color', 'paused', 'error'];
+      const COLOR_TOKENS = [
+        ['bg', 'page'],
+        ['surface', 'panels, cards'],
+        ['surface-2', 'nested, inputs'],
+        ['border', 'dividers'],
+        ['text', 'primary text'],
+        ['text-muted', 'secondary text'],
+        ['accent', 'live mode only'],
+        ['accent-text', 'live text'],
+        ['accent-edge', 'outline of accent fills'],
+        ['accent-fg', 'text on accent'],
+        ['primary', 'primary button (neutral)'],
+        ['primary-fg', 'text on primary'],
+        ['focus', 'focus ring'],
+        ['success', 'connected, ok'],
+        ['warning', 'paused, recalibrate'],
+        ['danger', 'errors'],
+      ];
+
+      function renderSwatches() {
+        const css = getComputedStyle(document.documentElement);
+        document.getElementById('swatches').innerHTML = COLOR_TOKENS.map(([name, use]) => {
+          const v = css.getPropertyValue(`--${name}`).trim();
+          return `<div class="swatch"><div class="chip" style="background:var(--${name})"></div>
+            <div><div class="mono">--${name}</div><div class="mono muted">${v}</div>
+            <div class="muted" style="font-size:var(--text-xs)">${use}</div></div></div>`;
+        }).join('');
+      }
+
+      function renderSeparation() {
+        const chips = `
+          <span class="overlay live"><svg><use href="#i-lamp"/></svg>Edit</span>
+          <span class="overlay warning"><svg><use href="#i-pause"/></svg>Paused</span>
+          <span class="overlay danger"><svg><use href="#i-error"/></svg>Error</span>`;
+        const rows = [
+          ['over white', 'white', ''],
+          ['over black', 'black', ''],
+          ['over color bars', 'bars', ''],
+          ['deuteranopia (simulated)', 'bars', 'cvd-deutan'],
+          ['protanopia (simulated)', 'bars', 'cvd-protan'],
+        ];
+        document.getElementById('separation').innerHTML = rows
+          .map(
+            ([
+              label,
+              bg,
+              cvd,
+            ]) => `<div class="row"><span class="label" style="width:200px">${label}</span>
+            <div class="video ${bg} ${cvd}" style="min-height:0;flex:1">${chips}</div></div>`,
+          )
+          .join('');
+      }
+
+      function renderTray() {
+        const bar = (cls, dir, suffix, name) =>
+          `<div class="taskbar ${cls}">${STATES.map(
+            (s) =>
+              `<img src="./tray/${dir}/${s}${suffix}.png" width="16" height="16" alt="${s}" title="${s}">`,
+          ).join('')}<span style="margin-left:auto">${name}</span></div>`;
+        const zoom = (dir, suffix, bg) =>
+          `<div class="row zoom">${STATES.map(
+            (s) => `<figure><div class="tile" style="background:${bg}">
+              <img src="./tray/${dir}/${s}${suffix}.png" alt="${s}"></div>
+              <figcaption class="mono muted">${s}</figcaption></figure>`,
+          ).join('')}</div>`;
+        document.getElementById('tray').innerHTML = [
+          bar('win-dark', 'win/dark', '', 'Windows · dark taskbar'),
+          zoom('win/dark', '', '#202020'),
+          bar('win-light', 'win/light', '', 'Windows · light taskbar'),
+          zoom('win/light', '', '#f3f3f3'),
+          bar('mac-light', 'mac', 'Template', 'macOS · light menu bar'),
+          bar('mac-dark', 'mac', 'Template', 'macOS · dark menu bar'),
+        ].join('');
+      }
+
+      document.querySelectorAll('[data-set-theme]').forEach((b) =>
+        b.addEventListener('click', () => {
+          document.documentElement.dataset.theme = b.dataset.setTheme;
+          document
+            .querySelectorAll('[data-set-theme]')
+            .forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+          renderSwatches();
+        }),
+      );
+      document.getElementById('press-demo').addEventListener('click', (e) => {
+        const b = e.currentTarget;
+        b.setAttribute('aria-pressed', String(b.getAttribute('aria-pressed') !== 'true'));
+      });
+      const reduce = matchMedia('(prefers-reduced-motion: reduce)');
+      const showMotion = () => {
+        document.getElementById('motion-state').textContent = reduce.matches
+          ? 'prefers-reduced-motion: reduce → snaps are instant (0 ms)'
+          : 'prefers-reduced-motion: no-preference → 120 ms snap';
+      };
+      reduce.addEventListener('change', showMotion);
+      document
+        .getElementById('motion-toggle')
+        .addEventListener('click', () =>
+          document.getElementById('motion-demo').classList.toggle('on'),
+        );
+
+      const params = new URLSearchParams(location.search);
+      if (params.get('theme') === 'light') document.querySelector('[data-set-theme=light]').click();
+      showMotion();
+      renderSwatches();
+      renderSeparation();
+      renderTray();
+    </script>
+  </body>
+</html>

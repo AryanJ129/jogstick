@@ -12,6 +12,8 @@ const LIVE = 0.05;
 let index: number | null = null;
 let last = '';
 let lastSent = 0;
+/** Nonstandard pads already reported: once each, not on every 4 ms poll. */
+const reported = new Set<string>();
 
 function pick(pads: (Gamepad | null)[]): Gamepad | null {
   if (index !== null) {
@@ -24,7 +26,9 @@ function pick(pads: (Gamepad | null)[]): Gamepad | null {
   for (const p of pads) {
     if (!p?.connected) continue;
     if (p.mapping !== 'standard') {
-      window.jogstick.send('pad:message', { kind: 'nonstandard', id: p.id.slice(0, 200) });
+      const id = p.id.slice(0, 200);
+      if (!reported.has(id)) window.jogstick.send('pad:message', { kind: 'nonstandard', id });
+      reported.add(id);
       continue;
     }
     index = p.index;

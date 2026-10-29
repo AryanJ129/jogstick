@@ -62,6 +62,17 @@ describe('checkKeymap', () => {
       'nope.nothing',
     ]);
   });
+
+  it('Windows rules: no Win key, no lone Alt (on macOS both are fine)', () => {
+    const o = KeymapOverridesSchema.parse({
+      'edit.paste': { win32: 'Cmd+V', darwin: 'Cmd+V' },
+      'edit.copy': { win32: 'Alt', darwin: 'Alt' },
+      'edit.cut': { win32: 'Alt+X' },
+    });
+    const issues = checkKeymap(profile, keymap, o, known);
+    expect(issues.map((i) => i.path).sort()).toEqual(['edit.copy.win32', 'edit.paste.win32']);
+    expect(checkKeymap(profile, keymap, {}, known, 'win32')).toEqual([]);
+  });
 });
 
 describe('unboundCommands', () => {

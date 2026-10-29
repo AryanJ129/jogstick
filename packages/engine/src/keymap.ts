@@ -46,14 +46,22 @@ export function checkKeymap(
   keymap: Keymap,
   overrides: KeymapOverrides,
   isKnownCode: (code: string) => boolean,
+  /** The OS the profile's raw key combos run on; win32 adds the Windows rules to them. */
+  os?: Os,
 ): KeymapIssue[] {
   const issues: KeymapIssue[] = [];
-  const checkCombo = (path: string, text: string | null | undefined) => {
+  const checkCombo = (path: string, text: string | null | undefined, win32: boolean) => {
     if (!text) return;
     try {
       const c = parseCombo(text);
       if (c.code !== null && !isKnownCode(c.code))
         issues.push({ path, message: `key ${c.code} can't be sent by this build` });
+      // Windows: the Win key opens Start on release (stealing focus from Resolve), and a lone Alt
+      // puts Resolve's menu bar in focus, so later keys go to the menu.
+      if (win32 && c.mods.includes('Cmd'))
+        issues.push({ path, message: `"${text}": Cmd/Meta is the Windows key; use Ctrl or Mod` });
+      if (win32 && c.code === null && c.mods.includes('Alt'))
+        issues.push({ path, message: `"${text}": Alt alone opens the menu bar on Windows` });
     } catch (e) {
       issues.push({ path, message: (e as Error).message });
     }
@@ -62,12 +70,12 @@ export function checkKeymap(
     const a = b.action;
     if (a.type === 'command' && !(a.id in keymap))
       issues.push({ path: `bindings.${i}.action.id`, message: `unknown command ${a.id}` });
-    if (a.type === 'key') checkCombo(`bindings.${i}.action.combo`, a.combo);
+    if (a.type === 'key') checkCombo(`bindings.${i}.action.combo`, a.combo, os === 'win32');
   });
   for (const [id, o] of Object.entries(overrides)) {
     if (!(id in keymap)) issues.push({ path: id, message: `unknown command ${id}` });
-    checkCombo(`${id}.win32`, o.win32);
-    checkCombo(`${id}.darwin`, o.darwin);
+    checkCombo(`${id}.win32`, o.win32, true);
+    checkCombo(`${id}.darwin`, o.darwin, false);
   }
   return issues;
 }

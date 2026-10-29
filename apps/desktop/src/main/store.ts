@@ -1,5 +1,6 @@
 import {
   checkKeymap,
+  compileProfile,
   HostSettingsSchema,
   KeymapOverridesSchema,
   parseKeymap,
@@ -155,7 +156,15 @@ export class Store {
   }
 
   private check(c: Config, name: string): boolean {
-    const issues = checkKeymap(c.profile, c.keymap, c.overrides, this.isKnownCode);
+    // The host compiles the profile when it applies it; a throw there must reject here, before the
+    // store commits, or the store and the host would disagree.
+    try {
+      compileProfile(c.profile);
+    } catch (e) {
+      return this.reject(name, `profile doesn't compile: ${String(e)}`);
+    }
+    const os = process.platform === 'win32' ? 'win32' : 'darwin';
+    const issues = checkKeymap(c.profile, c.keymap, c.overrides, this.isKnownCode, os);
     if (issues.length === 0) return true;
     return this.reject(name, issues.map((i) => `${i.path}: ${i.message}`).join('; '));
   }

@@ -17,7 +17,8 @@ pub struct Frontmost {
 }
 
 /// macOS windows that briefly take focus without the user leaving Resolve; the gate
-/// keeps its previous state while one of these is in front.
+/// closes with reason `transient` while one of these is in front (keys must never land in
+/// a password field) and re-opens when Resolve is back.
 pub const TRANSIENT_MAC: &[&str] = &[
     "com.apple.loginwindow",
     "com.apple.ScreenSaver.Engine",

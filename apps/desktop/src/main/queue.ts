@@ -134,6 +134,8 @@ export class OutputQueue {
         break;
       case 'keyUp':
         this.sink.keyUp(op.code, op.mods);
+        // The addon's key_up also sets the modifiers to op.mods.
+        this.held = [...op.mods];
         this.keys.delete(op.code);
         break;
       case 'button':

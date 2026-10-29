@@ -344,7 +344,9 @@ pub fn is_process_elevated(pid: u32) -> napi::Result<Option<bool>> {
             Ok(match elevation(pid) {
                 Elevation::Elevated => Some(true),
                 Elevation::NotElevated => Some(false),
-                // From a non-elevated caller, "can't open the token" usually means elevated.
+                // Possibly elevated (see Elevation::Unknown). The gate treats unknown as not
+                // elevated: at worst UIPI drops our input with no "ADMIN" label; nothing reaches
+                // the wrong window. Revisit if a tester's Console shows unknowns.
                 Elevation::Unknown { .. } => None,
             })
         }

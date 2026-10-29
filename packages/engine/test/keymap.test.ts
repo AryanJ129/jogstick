@@ -17,7 +17,8 @@ describe('resolveCommand', () => {
   it('uses the shipped default when there is no override', () => {
     const r = resolveCommand('edit.paste', 'win32', keymap);
     expect(r.source).toBe('default');
-    expect(r.text).toBe(keymap['edit.paste']!.win32);
+    expect(r.text).toBe(keymap['edit.paste']?.win32);
+    expect(r.text).toBe('Ctrl+V');
   });
 
   it('an override for this OS wins; the other OS keeps its default', () => {

@@ -81,7 +81,10 @@ export function unboundCommands(
 ): string[] {
   const ids = new Set<string>();
   for (const b of profile.bindings)
-    if (b.action.type === 'command' && resolveCommand(b.action.id, os, keymap, overrides).combo === null)
+    if (
+      b.action.type === 'command' &&
+      resolveCommand(b.action.id, os, keymap, overrides).combo === null
+    )
       ids.add(b.action.id);
   return [...ids].sort();
 }

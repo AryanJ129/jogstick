@@ -12,7 +12,7 @@ use core_foundation::boolean::CFBoolean;
 use core_foundation::dictionary::{CFDictionary, CFDictionaryRef};
 use core_foundation::string::{CFString, CFStringRef};
 use core_graphics::event::{
-    CGEvent, CGEventField, CGEventFlags, CGEventTapLocation, CGEventType, CGMouseButton, EventField,
+    CGEvent, CGEventField, CGEventFlags, CGEventTapLocation, CGEventType, CGMouseButton, EventField, ScrollEventUnit,
 };
 use core_graphics::event_source::{CGEventSource, CGEventSourceStateID};
 use core_graphics::geometry::CGPoint;
@@ -22,6 +22,18 @@ extern "C" {
     fn AXIsProcessTrusted() -> bool;
     fn AXIsProcessTrustedWithOptions(options: CFDictionaryRef) -> bool;
     static kAXTrustedCheckOptionPrompt: CFStringRef;
+}
+
+#[link(name = "CoreGraphics", kind = "framework")]
+extern "C" {
+    fn CGEventSourceKeyState(state: CGEventSourceStateID, key: u16) -> bool;
+    fn CGEventSourceButtonState(state: CGEventSourceStateID, button: u32) -> bool;
+}
+
+/// Combined physical + synthetic state, as recommended for crash recovery.
+fn key_down_in_session(keycode: u16) -> bool {
+    // SAFETY: pure query with plain integer arguments.
+    unsafe { CGEventSourceKeyState(CGEventSourceStateID::CombinedSessionState, keycode) }
 }
 
 /// Whether this process holds the Accessibility grant that CGEventPost needs.
@@ -150,12 +162,40 @@ impl Backend for MacBackend {
         Ok(())
     }
 
+    fn scroll(&mut self, dx: i32, dy: i32, pixels: bool, mods: Mods) -> Result<(), String> {
+        let units = if pixels { ScrollEventUnit::PIXEL } else { ScrollEventUnit::LINE };
+        // wheel1 = vertical (positive = up), wheel2 = horizontal (positive = left on macOS).
+        let ev = CGEvent::new_scroll_event(self.source.clone(), units, 2, dy, -dx, 0)
+            .map_err(|_| "CGEventCreateScrollWheelEvent failed".to_string())?;
+        ev.set_flags(mod_flags(mods));
+        self.post(&ev);
+        Ok(())
+    }
+
     fn cursor_position(&self) -> Result<(f64, f64), String> {
         let src = CGEventSource::new(CGEventSourceStateID::CombinedSessionState)
             .map_err(|_| "CGEventSourceCreate failed".to_string())?;
         let ev = CGEvent::new(src).map_err(|_| "CGEventCreate failed".to_string())?;
         let p = ev.location();
         Ok((p.x, p.y))
+    }
+
+    fn key_is_down(&self, key: &KeyDef) -> bool {
+        key_down_in_session(key.mac)
+    }
+
+    fn modifier_is_down(&self, m: Modifier) -> bool {
+        key_down_in_session(m.mac())
+    }
+
+    fn button_is_down(&self, btn: MouseBtn) -> bool {
+        let b = match btn {
+            MouseBtn::Left => 0,
+            MouseBtn::Right => 1,
+            MouseBtn::Middle => 2,
+        };
+        // SAFETY: pure query with plain integer arguments.
+        unsafe { CGEventSourceButtonState(CGEventSourceStateID::CombinedSessionState, b) }
     }
 }
 

@@ -9,6 +9,110 @@
  */
 export declare const __napiBindingTarget: 'native' | 'wasm32-wasi' | 'wasm32-wasip1'
 
+/** macOS: whether we hold the Accessibility grant (`prompt` shows the system dialog). Windows: always true. */
+export declare function axIsTrusted(prompt: boolean): boolean
+
 export declare function cursorPosition(): Array<number>
 
+export declare function frontmostApp(): FrontmostInfo | null
+
+export interface FrontmostInfo {
+  id: string
+  name: string
+  pid: number
+  /** [x, y, w, h] of the focused window. */
+  bounds?: Array<number>
+  isDialog: boolean
+  /** macOS overlays that briefly take focus (screen saver, notifications): keep the gate as it was. */
+  transient: boolean
+}
+
+/** What the injector believes it is holding. */
+export declare function heldState(): HeldState
+
+export interface HeldState {
+  keys: Array<string>
+  mods: Array<string>
+  buttons: Array<string>
+}
+
+/** Whether the keymap knows this W3C `KeyboardEvent.code`. */
+export declare function isKnownCode(code: string): boolean
+
+/** Windows: whether `pid` runs elevated (UIPI blocks our input to it). null = unknown or not Windows. */
+export declare function isProcessElevated(pid: number): boolean | null
+
+/** Whether a process with this executable name runs (`steam.exe`, `steam_osx`). */
+export declare function isProcessRunning(name: string): boolean
+
+/** Key down with exactly `mods` held (modifier events are sent first if they differ). */
+export declare function keyDown(code: string, mods: Array<string>): void
+
+export declare function keyUp(code: string, mods: Array<string>): void
+
+/** Move the held modifier set to exactly `mods`. */
+export declare function modifierChanged(mods: Array<string>): void
+
+export declare function mouseButton(btn: string, down: boolean): void
+
+export declare function mouseMoveRel(dx: number, dy: number): void
+
+export declare function mouseMoveTo(x: number, y: number): void
+
 export declare function nativeVersion(): string
+
+export declare function offFrontmostChanged(): void
+
+/**
+ * Call `cb(frontmost | null)` whenever the frontmost app, its focused window's dialog state
+ * or bounds change (polled every `intervalMs`, default 25, on a native thread).
+ * Replaces any previous watcher.
+ */
+export declare function onFrontmostChanged(cb: FrontCb, intervalMs?: number | undefined | null): void
+
+/** macOS: open System Settings → Privacy & Security → Accessibility. */
+export declare function openAxSettings(): void
+
+/** What the OS reports down among every key/modifier/button Jogstick can send (diagnostics, tests). */
+export declare function osHeldState(): HeldState
+
+export interface PadEvent {
+  /** "frame" | "connected" | "disconnected" | "error" */
+  kind: string
+  index: number
+  /** Standard mapping, 17 values in 0..1. */
+  buttons?: Array<number>
+  /** LX, LY, RX, RY in -1..1, +Y down. */
+  axes?: Array<number>
+  /** XInput dwPacketNumber. */
+  packet?: number
+  message?: string
+}
+
+/** Connected XInput slots (Windows; empty elsewhere). */
+export declare function padList(): Array<number>
+
+export interface PadOptions {
+  /** Poll rate, default 250. */
+  hz?: number
+}
+
+/** Rumble `index` with motor strengths 0..1 for `ms` (Windows; returns immediately). */
+export declare function padRumble(index: number, low: number, high: number, ms: number): void
+
+/**
+ * Start polling XInput (Windows). `cb(event)` gets frames on change plus 120 Hz snapshots
+ * while analog input is live, and connected / disconnected / error events.
+ */
+export declare function padStart(cb: PadCb, opts?: PadOptions | undefined | null): void
+
+export declare function padStop(): void
+
+/** Release everything we hold: mouse buttons → keys → modifiers. */
+export declare function releaseAll(): void
+
+/** At launch: post ups for anything the OS still reports down (after a crash). Returns what was released. */
+export declare function releaseLeftovers(): Array<string>
+
+/** `units`: "lines" or "pixels". dy > 0 scrolls up. */
+export declare function scroll(dx: number, dy: number, units: string): void

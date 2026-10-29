@@ -2,7 +2,7 @@
 //! can undo it in the safe order (mouse buttons → keys → modifiers).
 
 use crate::combo::{Combo, Mods};
-use crate::keymap::KeyDef;
+use crate::keymap::{self, KeyDef, Modifier};
 use std::thread::sleep;
 use std::time::Duration;
 
@@ -25,7 +25,14 @@ pub trait Backend {
     /// Absolute move in the OS's injection coordinate space (Windows: physical
     /// virtual-desktop pixels; macOS: global display points). `dragging` = a button is held.
     fn mouse_move_to(&mut self, x: f64, y: f64, dragging: Option<MouseBtn>, mods: Mods) -> Result<(), String>;
+    /// Wheel scroll: `dy` > 0 scrolls up / away, `dx` > 0 right. `pixels` = pixel units, else lines.
+    fn scroll(&mut self, dx: i32, dy: i32, pixels: bool, mods: Mods) -> Result<(), String>;
     fn cursor_position(&self) -> Result<(f64, f64), String>;
+    /// Whether the OS's combined (physical + synthetic) state has this key / modifier / button down.
+    /// Used only by `release_leftovers` after a crash.
+    fn key_is_down(&self, key: &KeyDef) -> bool;
+    fn modifier_is_down(&self, m: Modifier) -> bool;
+    fn button_is_down(&self, btn: MouseBtn) -> bool;
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -107,9 +114,58 @@ impl<B: Backend> Injector<B> {
         self.backend.mouse_button(btn, down, self.mods)
     }
 
+    pub fn held_buttons(&self) -> &[MouseBtn] {
+        &self.buttons
+    }
+
     pub fn mouse_move_to(&mut self, x: f64, y: f64) -> Result<(), String> {
         let dragging = self.buttons.first().copied();
         self.backend.mouse_move_to(x, y, dragging, self.mods)
+    }
+
+    pub fn mouse_move_rel(&mut self, dx: f64, dy: f64) -> Result<(), String> {
+        let (x, y) = self.backend.cursor_position()?;
+        self.mouse_move_to(x + dx, y + dy)
+    }
+
+    pub fn scroll(&mut self, dx: i32, dy: i32, pixels: bool) -> Result<(), String> {
+        self.backend.scroll(dx, dy, pixels, self.mods)
+    }
+
+    /// After a crash, the OS may still think something we sent is down. Post an up for
+    /// every key, modifier and mouse button the OS reports down, in the `release_all`
+    /// order. Run once at launch (it also releases anything physically held then).
+    /// Returns what was released.
+    pub fn release_leftovers(&mut self) -> Result<Vec<String>, String> {
+        let mut released = Vec::new();
+        let mut first_err = None;
+        for btn in [MouseBtn::Left, MouseBtn::Right, MouseBtn::Middle] {
+            if self.backend.button_is_down(btn) {
+                released.push(format!("mouse:{btn:?}"));
+                if let Err(e) = self.backend.mouse_button(btn, false, Mods::NONE) {
+                    first_err.get_or_insert(e);
+                }
+            }
+        }
+        for key in keymap::all() {
+            if self.backend.key_is_down(key) {
+                released.push(key.code.to_string());
+                if let Err(e) = self.backend.key(key, false, Mods::NONE, KeyOpts::default()) {
+                    first_err.get_or_insert(e);
+                }
+            }
+        }
+        let down = Modifier::ALL.into_iter().filter(|m| self.backend.modifier_is_down(*m)).fold(Mods::NONE, Mods::with);
+        if down != Mods::NONE {
+            released.extend(down.iter().map(|m| format!("mod:{m:?}")));
+            if let Err(e) = self.backend.modifiers(down, Mods::NONE) {
+                first_err.get_or_insert(e);
+            }
+        }
+        self.keys.clear();
+        self.buttons.clear();
+        self.mods = Mods::NONE;
+        first_err.map_or(Ok(released), Err)
     }
 
     /// Release in order: mouse buttons → keys → modifiers. Keeps going on errors
@@ -145,11 +201,16 @@ pub(crate) mod tests {
         Mods(u8, u8),
         Btn(MouseBtn, bool),
         Move(f64, f64, bool),
+        Scroll(i32, i32, bool),
     }
 
     #[derive(Default)]
     pub struct Fake {
         pub log: Vec<Ev>,
+        /// What the fake OS reports as down (for release_leftovers).
+        pub down_keys: Vec<&'static str>,
+        pub down_mods: Mods,
+        pub down_buttons: Vec<MouseBtn>,
     }
 
     impl Backend for Fake {
@@ -169,9 +230,61 @@ pub(crate) mod tests {
             self.log.push(Ev::Move(x, y, d.is_some()));
             Ok(())
         }
-        fn cursor_position(&self) -> Result<(f64, f64), String> {
-            Ok((0.0, 0.0))
+        fn scroll(&mut self, dx: i32, dy: i32, pixels: bool, _: Mods) -> Result<(), String> {
+            self.log.push(Ev::Scroll(dx, dy, pixels));
+            Ok(())
         }
+        fn cursor_position(&self) -> Result<(f64, f64), String> {
+            Ok((10.0, 20.0))
+        }
+        fn key_is_down(&self, key: &KeyDef) -> bool {
+            self.down_keys.contains(&key.code)
+        }
+        fn modifier_is_down(&self, m: Modifier) -> bool {
+            self.down_mods.has(m)
+        }
+        fn button_is_down(&self, btn: MouseBtn) -> bool {
+            self.down_buttons.contains(&btn)
+        }
+    }
+
+    #[test]
+    fn release_leftovers_posts_ups_for_what_the_os_reports_down() {
+        let fake = Fake {
+            down_keys: vec!["KeyB", "ArrowLeft"],
+            down_mods: Mods::NONE.with(Modifier::Meta).with(Modifier::Shift),
+            down_buttons: vec![MouseBtn::Left],
+            ..Fake::default()
+        };
+        let mut inj = Injector::new(fake);
+        let released = inj.release_leftovers().unwrap();
+        let both = Mods::NONE.with(Modifier::Meta).with(Modifier::Shift).0;
+        assert_eq!(
+            inj.backend.log,
+            vec![
+                Ev::Btn(MouseBtn::Left, false),
+                Ev::Key("KeyB", false, 0),
+                Ev::Key("ArrowLeft", false, 0),
+                Ev::Mods(both, 0),
+            ],
+            "buttons → keys → modifiers"
+        );
+        assert_eq!(released.len(), 5, "{released:?}");
+        assert_eq!(inj.held_mods(), Mods::NONE);
+    }
+
+    #[test]
+    fn release_leftovers_with_nothing_down_posts_nothing() {
+        let mut inj = Injector::new(Fake::default());
+        assert!(inj.release_leftovers().unwrap().is_empty());
+        assert!(inj.backend.log.is_empty());
+    }
+
+    #[test]
+    fn relative_move_starts_from_the_cursor() {
+        let mut inj = Injector::new(Fake::default());
+        inj.mouse_move_rel(5.0, -2.5).unwrap();
+        assert_eq!(inj.backend.log, vec![Ev::Move(15.0, 17.5, false)]);
     }
 
     #[test]

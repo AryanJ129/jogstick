@@ -23,7 +23,10 @@ export interface FrontmostInfo {
   /** [x, y, w, h] of the focused window. */
   bounds?: Array<number>
   isDialog: boolean
-  /** macOS overlays that briefly take focus (screen saver, notifications): keep the gate as it was. */
+  /**
+   * macOS overlays that briefly take focus (lock screen, password prompt, screen saver,
+   * notifications). The gate closes for them too, under its own reason.
+   */
   transient: boolean
 }
 

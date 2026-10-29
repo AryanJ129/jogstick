@@ -1,0 +1,2 @@
+#!/bin/sh
+GH_TOKEN="$(gh auth token -h github.com -u AryanJ129)" exec gh "$@"

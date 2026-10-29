@@ -1,0 +1,23 @@
+{
+  "name": "@jogstick/native",
+  "version": "0.0.0",
+  "private": true,
+  "main": "index.js",
+  "types": "index.d.ts",
+  "napi": {
+    "binaryName": "jogstick-native",
+    "targets": [
+      "x86_64-pc-windows-msvc",
+      "aarch64-apple-darwin"
+    ]
+  },
+  "scripts": {
+    "build": "napi build --platform --release --features addon",
+    "build:debug": "napi build --platform --features addon",
+    "typecheck": "true",
+    "test": "cargo test"
+  },
+  "devDependencies": {
+    "@napi-rs/cli": "3.10.9"
+  }
+}

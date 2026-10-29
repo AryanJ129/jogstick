@@ -1,0 +1,24 @@
+{
+  "name": "@jogstick/engine",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run --coverage",
+    "typecheck": "tsc --noEmit -p .",
+    "replay": "tsx scripts/replay.ts"
+  },
+  "dependencies": {
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@vitest/coverage-v8": "5.0.5",
+    "fast-check": "4.10.2",
+    "tsx": "4.23.15",
+    "vitest": "5.0.5"
+  }
+}

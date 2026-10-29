@@ -1,0 +1,360 @@
+{
+  "version": 1,
+  "id": "resolve-default",
+  "name": "DaVinci Resolve",
+  "appMatch": {
+    "win32": ["Resolve.exe"],
+    "darwin": ["com.blackmagic-design.DaVinciResolve", "com.blackmagic-design.DaVinciResolveLite"]
+  },
+  "settings": {
+    "deadzone": 0.12,
+    "outerDeadzone": 0.98,
+    "triggerDeadzone": 0.08,
+    "chordWindowMs": 60,
+    "holdThresholdMs": 300,
+    "comboSpacingMs": 16,
+    "axisLockRatio": 1.5,
+    "hapticDetents": true
+  },
+  "modes": ["edit", "color"],
+  "modeSwitch": { "chord": ["view", "menu"], "haptic": "pulse" },
+  "layers": [
+    { "id": "trim", "hold": "lb", "modes": ["edit"] },
+    { "id": "mark", "hold": "rb", "modes": ["edit"] },
+    { "id": "alt", "hold": "lb", "modes": ["color"] }
+  ],
+  "fine": { "hold": "rb", "modes": ["color"], "multiplier": 0.25 },
+  "bindings": [
+    { "mode": "edit", "input": "a", "action": { "type": "command", "id": "edit.splitClip" } },
+    {
+      "mode": "edit",
+      "input": "a",
+      "layer": "trim",
+      "action": { "type": "command", "id": "edit.rippleDelete" }
+    },
+    {
+      "mode": "edit",
+      "input": "a",
+      "layer": "mark",
+      "action": { "type": "command", "id": "view.toggleSourceTimeline" }
+    },
+
+    { "mode": "edit", "input": "x", "action": { "type": "command", "id": "edit.cut" } },
+    {
+      "mode": "edit",
+      "input": "x",
+      "layer": "trim",
+      "action": { "type": "command", "id": "edit.rippleCut" }
+    },
+    {
+      "mode": "edit",
+      "input": "x",
+      "layer": "mark",
+      "action": { "type": "command", "id": "select.clipsForwardAllTracks" }
+    },
+
+    { "mode": "edit", "input": "y", "action": { "type": "command", "id": "edit.copy" } },
+    {
+      "mode": "edit",
+      "input": "y",
+      "layer": "trim",
+      "action": { "type": "command", "id": "trim.extendEdit" }
+    },
+    {
+      "mode": "edit",
+      "input": "y",
+      "layer": "mark",
+      "action": { "type": "command", "id": "select.nearestClipGap" }
+    },
+
+    { "mode": "edit", "input": "b", "action": { "type": "command", "id": "edit.paste" } },
+    {
+      "mode": "edit",
+      "input": "b",
+      "layer": "trim",
+      "action": { "type": "command", "id": "edit.pasteInsert" }
+    },
+    {
+      "mode": "edit",
+      "input": "b",
+      "layer": "mark",
+      "action": { "type": "command", "id": "nav.matchFrame" }
+    },
+
+    { "mode": "edit", "input": "dpadUp", "action": { "type": "command", "id": "nav.prevEdit" } },
+    {
+      "mode": "edit",
+      "input": "dpadUp",
+      "layer": "trim",
+      "action": { "type": "command", "id": "trim.trimStart" }
+    },
+    {
+      "mode": "edit",
+      "input": "dpadUp",
+      "layer": "mark",
+      "action": { "type": "command", "id": "mark.in" }
+    },
+    { "mode": "edit", "input": "dpadDown", "action": { "type": "command", "id": "nav.nextEdit" } },
+    {
+      "mode": "edit",
+      "input": "dpadDown",
+      "layer": "trim",
+      "action": { "type": "command", "id": "trim.trimEnd" }
+    },
+    {
+      "mode": "edit",
+      "input": "dpadDown",
+      "layer": "mark",
+      "action": { "type": "command", "id": "mark.out" }
+    },
+
+    {
+      "mode": "edit",
+      "input": "dpadLeft",
+      "action": {
+        "type": "command",
+        "id": "nav.stepFrameBackward",
+        "repeat": { "delayMs": 300, "intervalMs": 60 }
+      }
+    },
+    {
+      "mode": "edit",
+      "input": "dpadLeft",
+      "layer": "trim",
+      "action": { "type": "command", "id": "trim.nudgeLeft" }
+    },
+    {
+      "mode": "edit",
+      "input": "dpadLeft",
+      "layer": "mark",
+      "action": { "type": "command", "id": "trim.rippleStartToPlayhead" }
+    },
+    {
+      "mode": "edit",
+      "input": "dpadRight",
+      "action": {
+        "type": "command",
+        "id": "nav.stepFrameForward",
+        "repeat": { "delayMs": 300, "intervalMs": 60 }
+      }
+    },
+    {
+      "mode": "edit",
+      "input": "dpadRight",
+      "layer": "trim",
+      "action": { "type": "command", "id": "trim.nudgeRight" }
+    },
+    {
+      "mode": "edit",
+      "input": "dpadRight",
+      "layer": "mark",
+      "action": { "type": "command", "id": "trim.rippleEndToPlayhead" }
+    },
+
+    {
+      "mode": "edit",
+      "input": "lstick.x",
+      "action": {
+        "type": "jog",
+        "rate": { "min": 2, "max": 30, "curve": "quad" },
+        "fastAtEdge": true
+      }
+    },
+    {
+      "mode": "edit",
+      "input": "lstick.x",
+      "layer": "trim",
+      "action": { "type": "jog", "rate": { "min": 1, "max": 6, "curve": "quad" } }
+    },
+    {
+      "mode": "edit",
+      "input": "lstick.y",
+      "dir": -1,
+      "action": {
+        "type": "command",
+        "id": "view.zoomIn",
+        "repeat": { "delayMs": 300, "intervalMs": 150 }
+      }
+    },
+    {
+      "mode": "edit",
+      "input": "lstick.y",
+      "dir": 1,
+      "action": {
+        "type": "command",
+        "id": "view.zoomOut",
+        "repeat": { "delayMs": 300, "intervalMs": 150 }
+      }
+    },
+    {
+      "mode": "edit",
+      "input": "lstick.y",
+      "layer": "trim",
+      "dir": -1,
+      "action": { "type": "command", "id": "view.zoomToFit" }
+    },
+    {
+      "mode": "edit",
+      "input": "lstick.y",
+      "layer": "trim",
+      "dir": 1,
+      "action": { "type": "command", "id": "view.zoomToFit" }
+    },
+
+    {
+      "mode": "edit",
+      "input": "rstick",
+      "action": { "type": "mouseMove", "speed": 1200, "curve": "quad" }
+    },
+
+    {
+      "mode": "edit",
+      "input": "lt",
+      "action": {
+        "type": "shuttle",
+        "dir": "reverse",
+        "zones": [0.15, 0.4, 0.6, 0.8],
+        "slowZone": true
+      }
+    },
+    {
+      "mode": "edit",
+      "input": "rt",
+      "action": {
+        "type": "shuttle",
+        "dir": "forward",
+        "zones": [0.15, 0.4, 0.6, 0.8],
+        "slowZone": true
+      }
+    },
+
+    { "mode": "edit", "input": "l3", "action": { "type": "command", "id": "transport.playPause" } },
+    {
+      "mode": "edit",
+      "input": "l3",
+      "layer": "trim",
+      "action": { "type": "command", "id": "transport.playAround" }
+    },
+    {
+      "mode": "edit",
+      "input": "l3",
+      "layer": "mark",
+      "action": { "type": "command", "id": "mark.clearInOut" }
+    },
+    { "mode": "edit", "input": "r3", "action": { "type": "mouseButton", "button": "left" } },
+
+    {
+      "mode": "edit",
+      "input": "view",
+      "action": {
+        "type": "command",
+        "id": "edit.undo",
+        "repeat": { "delayMs": 400, "intervalMs": 120 }
+      }
+    },
+    {
+      "mode": "edit",
+      "input": "menu",
+      "action": {
+        "type": "command",
+        "id": "edit.redo",
+        "repeat": { "delayMs": 400, "intervalMs": 120 }
+      }
+    },
+
+    {
+      "mode": "color",
+      "input": "lstick",
+      "action": { "type": "wheel", "wheel": "lift", "part": "balance", "gain": 1.0 }
+    },
+    {
+      "mode": "color",
+      "input": "lstick",
+      "layer": "alt",
+      "action": { "type": "wheel", "wheel": "gamma", "part": "balance", "gain": 1.0 }
+    },
+    {
+      "mode": "color",
+      "input": "rstick",
+      "action": { "type": "wheel", "wheel": "gain", "part": "balance", "gain": 1.0 }
+    },
+    {
+      "mode": "color",
+      "input": "rstick",
+      "layer": "alt",
+      "action": { "type": "wheel", "wheel": "offset", "part": "balance", "gain": 1.0 }
+    },
+    {
+      "mode": "color",
+      "input": "lt",
+      "action": { "type": "wheel", "wheel": "active", "part": "master", "dir": -1, "gain": 1.0 }
+    },
+    {
+      "mode": "color",
+      "input": "rt",
+      "action": { "type": "wheel", "wheel": "active", "part": "master", "dir": 1, "gain": 1.0 }
+    },
+
+    { "mode": "color", "input": "a", "action": { "type": "command", "id": "color.addSerialNode" } },
+    {
+      "mode": "color",
+      "input": "a",
+      "layer": "alt",
+      "action": { "type": "command", "id": "color.addParallelNode" }
+    },
+    { "mode": "color", "input": "b", "action": { "type": "command", "id": "color.toggleNode" } },
+    {
+      "mode": "color",
+      "input": "b",
+      "layer": "alt",
+      "action": { "type": "command", "id": "color.bypassAll" }
+    },
+    { "mode": "color", "input": "x", "action": { "type": "command", "id": "color.grabStill" } },
+    {
+      "mode": "color",
+      "input": "x",
+      "layer": "alt",
+      "action": { "type": "command", "id": "color.resetNodeGrade" }
+    },
+    { "mode": "color", "input": "y", "action": { "type": "command", "id": "color.highlight" } },
+    { "mode": "color", "input": "dpadUp", "action": { "type": "command", "id": "color.prevClip" } },
+    {
+      "mode": "color",
+      "input": "dpadDown",
+      "action": { "type": "command", "id": "color.nextClip" }
+    },
+    {
+      "mode": "color",
+      "input": "dpadLeft",
+      "action": { "type": "command", "id": "color.prevNode" }
+    },
+    {
+      "mode": "color",
+      "input": "dpadRight",
+      "action": { "type": "command", "id": "color.nextNode" }
+    },
+    {
+      "mode": "color",
+      "input": "l3",
+      "action": { "type": "command", "id": "transport.playPause" }
+    },
+    {
+      "mode": "color",
+      "input": "view",
+      "action": {
+        "type": "command",
+        "id": "edit.undo",
+        "repeat": { "delayMs": 400, "intervalMs": 120 }
+      }
+    },
+    {
+      "mode": "color",
+      "input": "menu",
+      "action": {
+        "type": "command",
+        "id": "edit.redo",
+        "repeat": { "delayMs": 400, "intervalMs": 120 }
+      }
+    }
+  ]
+}

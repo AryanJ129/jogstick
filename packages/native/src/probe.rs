@@ -30,6 +30,49 @@ impl Report {
     }
 }
 
+/// A jump in XInput's `dwPacketNumber` between two consecutive state changes we saw:
+/// the controller changed state `missed` times between our polls and we never read those states.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+pub struct PacketGap {
+    pub t_ms: f64,
+    pub from: u32,
+    pub to: u32,
+    pub missed: u32,
+}
+
+/// Tracks `dwPacketNumber` across polls. The number changes whenever the controller's state
+/// changes, so a step of more than one between consecutive observed changes means state
+/// changes happened that we never polled: an objective "missed input" signal that doesn't
+/// depend on the tester counting presses.
+#[derive(Debug, Default)]
+pub struct PacketTracker {
+    last: Option<u32>,
+    pub changes: u64,
+    pub missed: u64,
+}
+
+impl PacketTracker {
+    /// Feed one connected poll. Returns a gap if state changes were skipped.
+    pub fn observe(&mut self, t_ms: f64, packet: u32) -> Option<PacketGap> {
+        let last = self.last.replace(packet)?;
+        if packet == last {
+            return None;
+        }
+        self.changes += 1;
+        let missed = packet.wrapping_sub(last).wrapping_sub(1);
+        if missed == 0 {
+            return None;
+        }
+        self.missed += u64::from(missed);
+        Some(PacketGap { t_ms, from: last, to: packet, missed })
+    }
+
+    /// The pad disconnected: its packet sequence may restart, so don't compare across the gap.
+    pub fn reset(&mut self) {
+        self.last = None;
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
 pub struct RateStats {
     pub windows: usize,
@@ -102,6 +145,26 @@ pub const WHEEL_NAMES: [&str; 8] =
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn packet_tracker_counts_changes_and_reports_gaps() {
+        let mut t = PacketTracker::default();
+        assert_eq!(t.observe(0.0, 10), None, "first poll only sets the baseline");
+        assert_eq!(t.observe(4.0, 10), None, "no change");
+        assert_eq!(t.observe(8.0, 11), None, "consecutive change, nothing missed");
+        assert_eq!(t.observe(12.0, 14), Some(PacketGap { t_ms: 12.0, from: 11, to: 14, missed: 2 }));
+        assert_eq!((t.changes, t.missed), (2, 2));
+    }
+
+    #[test]
+    fn packet_tracker_handles_wraparound_and_reconnect() {
+        let mut t = PacketTracker::default();
+        t.observe(0.0, u32::MAX);
+        assert_eq!(t.observe(4.0, 0), None, "MAX → 0 is one step");
+        t.reset();
+        assert_eq!(t.observe(8.0, 500), None, "after a reconnect the new sequence is a fresh baseline");
+        assert_eq!(t.missed, 0);
+    }
 
     #[test]
     fn rate_stats_basic() {

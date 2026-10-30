@@ -60,13 +60,20 @@ export interface Native {
  * The packaged layout (scripts/package-app.ts) is detected by its files, not `app.isPackaged`
  * (which only looks at the executable's name).
  */
-export const packaged = existsSync(join(process.resourcesPath, 'native', 'index.js'));
+export const packaged =
+  existsSync(join(process.resourcesPath, 'native', 'index.js')) ||
+  // The app itself, in case the native folder is what's missing (that's the failure to report).
+  existsSync(join(process.resourcesPath, 'app', 'package.json'));
 
-/** Packaged: `resources/native/index.js` (napi loader + `.node` side by side). Dev: the workspace package. */
-export function loadNative(): Native {
+/** Packaged: `resources/native` (napi loader + `.node` side by side). Dev: the workspace package. */
+export function nativeDir(): string {
+  return packaged
+    ? join(process.resourcesPath, 'native')
+    : join(app.getAppPath(), '..', '..', 'packages', 'native');
+}
+
+/** `path` (dev e2e only): load this file instead, to exercise the load-failure report. */
+export function loadNative(path = join(nativeDir(), 'index.js')): Native {
   const require = createRequire(import.meta.url);
-  const path = packaged
-    ? join(process.resourcesPath, 'native', 'index.js')
-    : join(app.getAppPath(), '..', '..', 'packages', 'native', 'index.js');
   return require(path) as Native;
 }

@@ -103,6 +103,60 @@ export function reportFiles(r: ReportInput): ReportFile[] {
   return files.map((f) => ({ name: f.name, data: clean(f.data) }));
 }
 
+export interface LoadFailureInput {
+  /** The Console so far (start-up lines and the error). */
+  console: string;
+  system: Record<string, unknown>;
+  error: { message: string; code?: string | undefined; stack?: string | undefined };
+  /** What is in the native module's folder: name → size in bytes, or null if the folder is missing. */
+  nativeFiles: Record<string, number> | null;
+  nativeDir: string;
+  redact: { home: string; user: string };
+  createdAt: Date;
+}
+
+const LOAD_FAILURE_README = `Jogstick test report: the input module failed to load
+
+Jogstick could not start because its native input module (the part that reads the controller and
+sends keys) did not load. This report holds only what Jogstick could collect without it:
+
+  load-error.txt   the exact error, and the files in the module's folder
+  system.json      Jogstick, Electron and OS versions
+  console.txt      Jogstick's log up to the error
+
+Nothing else is collected, and nothing was sent anywhere. Your home folder and user name are
+replaced with ~ and <user>.
+`;
+
+/** The report written when the native module can't load: no host, no controller, no profile. */
+export function loadFailureFiles(r: LoadFailureInput): ReportFile[] {
+  const clean = redactor(r.redact.home, r.redact.user);
+  const listing =
+    r.nativeFiles === null
+      ? '(the folder does not exist)'
+      : Object.entries(r.nativeFiles)
+          .map(([name, size]) => `  ${name}  ${size} bytes`)
+          .join('\n') || '(the folder is empty)';
+  const loadError = [
+    `message: ${r.error.message}`,
+    `code: ${r.error.code ?? '(none)'}`,
+    '',
+    `native module folder: ${r.nativeDir}`,
+    listing,
+    '',
+    'stack:',
+    r.error.stack ?? '(none)',
+    '',
+  ].join('\n');
+  const files: ReportFile[] = [
+    { name: 'README.txt', data: LOAD_FAILURE_README },
+    { name: 'load-error.txt', data: loadError },
+    { name: 'system.json', data: json({ createdAt: r.createdAt.toISOString(), ...r.system }) },
+    { name: 'console.txt', data: r.console },
+  ];
+  return files.map((f) => ({ name: f.name, data: clean(f.data) }));
+}
+
 /** `jogstick-report-2026-10-30-142501.zip` (local time, so it sorts and never collides in a session). */
 export function reportName(d: Date): string {
   const p = (n: number) => String(n).padStart(2, '0');

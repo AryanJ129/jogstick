@@ -5,7 +5,14 @@ import { join } from 'node:path';
 import { crc32, inflateRawSync } from 'node:zlib';
 import { describe, expect, it } from 'vitest';
 import { Log } from '../src/main/log';
-import { redactor, ReportCollector, reportFiles, reportName, zip } from '../src/main/report';
+import {
+  loadFailureFiles,
+  redactor,
+  ReportCollector,
+  reportFiles,
+  reportName,
+  zip,
+} from '../src/main/report';
 import type { ReportInput } from '../src/main/report';
 
 /** Read a zip back through its central directory (what unzip/Explorer do), checking each CRC. */
@@ -137,6 +144,48 @@ describe('test report', () => {
     expect(log.all().some((e) => e.msg === 'open')).toBe(false);
     expect(c.gateEvents.map((e) => e.msg)).toEqual(['open']);
     expect(c.errors.map((e) => e.msg)).toEqual(['w1', 'e1']);
+  });
+
+  it('a native load failure still makes a report: the exact error, the module folder, versions', () => {
+    const files = loadFailureFiles({
+      console: 'start\nerror loading the native addon failed\n',
+      system: { jogstick: '0.1.0-rc.2', os: { platform: 'win32' } },
+      error: {
+        message: `\\\\?\\${home}\\Jogstick\\resources\\native\\jogstick-native.win32-x64-msvc.node is not a valid Win32 application.`,
+        code: 'ERR_DLOPEN_FAILED',
+        stack: 'Error: …\n    at Module._extensions..node',
+      },
+      nativeFiles: { 'index.js': 37534, 'jogstick-native.win32-x64-msvc.node': 0 },
+      nativeDir: `${home}/Jogstick/resources/native`,
+      redact: { home, user: 'tester' },
+      createdAt: new Date(2026, 9, 30, 9, 0, 0),
+    });
+    const back = unzip(zip(files, new Date()));
+    expect([...back.keys()]).toEqual([
+      'README.txt',
+      'load-error.txt',
+      'system.json',
+      'console.txt',
+    ]);
+    const err = back.get('load-error.txt') ?? '';
+    expect(err).toContain('is not a valid Win32 application.');
+    expect(err).toContain('code: ERR_DLOPEN_FAILED');
+    expect(err).toContain('jogstick-native.win32-x64-msvc.node  0 bytes');
+    expect(JSON.parse(back.get('system.json') ?? '{}').jogstick).toBe('0.1.0-rc.2');
+    for (const text of back.values()) expect(text.toLowerCase()).not.toContain('tester');
+
+    const missing = loadFailureFiles({
+      console: '',
+      system: {},
+      error: { message: 'Cannot find module' },
+      nativeFiles: null,
+      nativeDir: '/x',
+      redact: { home, user: 'tester' },
+      createdAt: new Date(),
+    });
+    expect(missing.find((f) => f.name === 'load-error.txt')?.data).toContain(
+      '(the folder does not exist)',
+    );
   });
 
   it('names the file by local date and time', () => {

@@ -102,6 +102,10 @@ tick (and the engine's `wakeAt`).
   lines). Built from Jogstick's own state only (app ids, never window titles); every profile
   folder (`C:\Users\<x>`, 8.3 short names, `/Users/<x>`) and the user name are redacted; never
   overwrites; no network. The zip writer is ~60 lines on `node:zlib` (no dependency).
+- **Native module fails to load** (a missing/blocked/wrong-arch `.node`): Jogstick can't run, but
+  never quits silently. It writes a reduced report (the exact error and code, the native folder's
+  file listing, versions, OS, the Console so far) to the same folders, shows the error and the
+  report's path with "please send that .zip", then exits 1. The e2e covers it with a junk `.node`.
 - **Test with harness** (tray checkbox, off at every launch): the gate also accepts
   `jogstick-harness`, so a real controller can drive it on a machine without Resolve; the overlay
   echoes each command and the keys it resolves to (`TEST · edit.splitClip · Cmd+B`; a press the gate

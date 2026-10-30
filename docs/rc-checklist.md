@@ -1,12 +1,14 @@
-# Jogstick v0.1.0-rc1 — tester checklist (Windows)
+# Jogstick v0.1.0-rc2 — tester checklist (Windows)
 
-About 20 minutes. Edit mode only; Color mode comes in rc2. Thank you!
+About 20 minutes. Edit mode only; Color mode comes in a later rc. Thank you!
 
 ## Set up (5 min)
 
-1. Unzip `Jogstick-0.1.0-rc.1-windows-x64.zip` anywhere (e.g. your Desktop) and run
+1. Unzip `Jogstick-0.1.0-rc.2-windows-x64.zip` anywhere (e.g. your Desktop) and run
    **`Jogstick.exe`** inside the folder. Windows says "Windows protected your PC" because the app
-   isn't signed yet: click **More info → Run anyway**.
+   isn't signed yet: click **More info → Run anyway**. If instead an error says Jogstick **could
+   not load its input module**, it has already saved a `jogstick-report-<date>.zip` (the message
+   says where): send that file and stop there.
 2. Nothing opens: Jogstick lives in the **tray** (click the **^** by the clock if you don't see its
    icon). Right-click it for the menu.
 3. Connect the Xbox controller, any of three ways. It **buzzes once** when Jogstick has it.
@@ -70,7 +72,7 @@ videos land in Videos\Captures) so we can see the label and the timeline togethe
 
 ¹ Resolve has no default shortcut for Paste insert, so LB + B does nothing yet (the Console notes it).
 **View + Menu together** switches to Color mode (the label shows COLOR; it isn't part of this test
-and its wheels arrive in rc2); press them together again to come back to EDIT.
+and its wheels arrive in a later rc); press them together again to come back to EDIT.
 
 **If something seems stuck** (a key acting as if held down): switch to another app and back.
 Jogstick releases everything the moment Resolve isn't in front, and also when the controller

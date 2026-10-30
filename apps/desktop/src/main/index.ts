@@ -1,18 +1,18 @@
 import { unboundCommands } from '@jogstick/engine';
 import { app, BrowserWindow, dialog, Notification, powerMonitor, screen, shell } from 'electron';
-import { writeFileSync } from 'node:fs';
+import { readdirSync, statSync, writeFileSync } from 'node:fs';
 import { release as osRelease, userInfo } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import resolveDefault from '../../../../packages/profiles/resolve-default.json';
 import resolveKeymap from '../../../../packages/profiles/resolve-keymap.json';
 import { Host } from './host';
 import { Log } from './log';
-import { loadNative, packaged } from './native';
+import { loadNative, nativeDir, packaged } from './native';
 import type { Native } from './native';
 import { echoView, Overlay, overlayView } from './overlay';
 import { GamepadSource, preloadPath, ReplaySource, XInputSource } from './pad';
 import type { PadSource } from './pad';
-import { ReportCollector, reportFiles, reportName, zip } from './report';
+import { loadFailureFiles, ReportCollector, reportFiles, reportName, zip } from './report';
 import { Store } from './store';
 import { AppTray } from './tray';
 
@@ -23,6 +23,7 @@ import { AppTray } from './tray';
  *   JOGSTICK_GATE_APP    an extra app id the gate accepts (the harness bundle id / exe)
  *   JOGSTICK_USER_DATA   use this folder as <userData>
  *   JOGSTICK_E2E_TEST_MODE  turn on "Test with harness" at start (the e2e's way to the harness)
+ *   JOGSTICK_E2E_NATIVE_FAIL  load this file as the native module (a broken one: the failure report)
  * A packaged build ignores all of them: a replayed script would type into the gated app.
  */
 const devEnv = (name: string) => (packaged ? undefined : process.env[name]);
@@ -30,6 +31,7 @@ const E2E_SCRIPT = devEnv('JOGSTICK_E2E_SCRIPT');
 const GATE_APP = devEnv('JOGSTICK_GATE_APP');
 const USER_DATA = devEnv('JOGSTICK_USER_DATA');
 const E2E_TEST_MODE = devEnv('JOGSTICK_E2E_TEST_MODE') === '1';
+const E2E_NATIVE_FAIL = devEnv('JOGSTICK_E2E_NATIVE_FAIL');
 
 const log = new Log(2000, Date.now, E2E_SCRIPT !== undefined);
 const collector = new ReportCollector(log);
@@ -185,6 +187,8 @@ function consoleHeader(): string[] {
  * isn't writable (Program Files, a translocated macOS app, a dev build).
  */
 function reportDirs(): string[] {
+  // The e2e (dev only) keeps its reports in its own throwaway <userData>, never in Downloads.
+  if (E2E_SCRIPT || E2E_NATIVE_FAIL) return [app.getPath('userData')];
   // A portable .exe (electron-builder) runs from a temp folder deleted at quit; it names its own.
   const portable = process.env['PORTABLE_EXECUTABLE_DIR'];
   const beside = !packaged
@@ -286,7 +290,29 @@ async function exportReport(): Promise<void> {
     });
     return;
   }
-  const { name, data } = report;
+  const path = saveReport(report.name, report.data);
+  if (!path) {
+    void dialog.showMessageBox({
+      type: 'error',
+      message: 'Jogstick could not save the test report.',
+      detail: `Tried: ${reportDirs().join(', ')}`,
+    });
+    return;
+  }
+  const r = await dialog.showMessageBox({
+    type: 'info',
+    message: 'Test report saved',
+    detail: `${path}\n\nSend this .zip file back. It holds Jogstick's own log and settings only: no personal files, and nothing was sent anywhere.`,
+    buttons: [SHOW_IN_FOLDER, 'OK'],
+    defaultId: 0,
+  });
+  if (r.response === 0) shell.showItemInFolder(path);
+}
+
+const SHOW_IN_FOLDER = os === 'darwin' ? 'Show in Finder' : 'Show in folder';
+
+/** Write a report zip in the first writable folder of reportDirs(); never overwrites. */
+function saveReport(name: string, data: Buffer): string | null {
   for (const dir of reportDirs()) {
     let path = join(dir, name);
     try {
@@ -305,22 +331,95 @@ async function exportReport(): Promise<void> {
       continue;
     }
     log.add('app', `test report saved: ${path}`);
-    const r = await dialog.showMessageBox({
-      type: 'info',
-      message: 'Test report saved',
-      detail: `${path}\n\nSend this .zip file back. It holds Jogstick's own log and settings only: no personal files, and nothing was sent anywhere.`,
-      buttons: [os === 'darwin' ? 'Show in Finder' : 'Show in folder', 'OK'],
-      defaultId: 0,
-    });
-    if (r.response === 0) shell.showItemInFolder(path);
-    return;
+    return path;
   }
   log.add('error', 'test report: no folder could be written');
-  void dialog.showMessageBox({
+  return null;
+}
+
+/**
+ * The native module didn't load, so Jogstick can't run. Never quit silently: save a report with
+ * what can be collected without it, show the exact error and where the report is, then exit 1.
+ */
+async function reportLoadFailure(e: unknown): Promise<void> {
+  const err = e instanceof Error ? e : new Error(String(e));
+  const at = new Date();
+  const dir = nativeDir();
+  let nativeFiles: Record<string, number> | null;
+  try {
+    nativeFiles = Object.fromEntries(
+      readdirSync(dir).map((f) => [f, statSync(join(dir, f)).size] as const),
+    );
+  } catch {
+    nativeFiles = null; // the folder is missing (or unreadable): the report says so
+  }
+  let path: string | null = null;
+  try {
+    const files = loadFailureFiles({
+      console: log.format(consoleHeader()),
+      system: {
+        jogstick: app.getVersion(),
+        packaged,
+        versions: {
+          electron: process.versions.electron,
+          chrome: process.versions.chrome,
+          node: process.versions.node,
+          modules: process.versions.modules,
+        },
+        os: {
+          platform: process.platform,
+          version: process.getSystemVersion(),
+          kernel: osRelease(),
+          arch: process.arch,
+          locale: app.getLocale(),
+        },
+        appPath: process.execPath,
+      },
+      error: {
+        message: err.message,
+        code: (err as NodeJS.ErrnoException).code,
+        stack: err.stack,
+      },
+      nativeFiles,
+      nativeDir: dir,
+      redact: { home: app.getPath('home'), user: safeUser() },
+      createdAt: at,
+    });
+    path = saveReport(reportName(at), zip(files, at));
+  } catch (re) {
+    log.add('error', `load-failure report: ${String(re)}`);
+  }
+  const detail = [
+    err.message,
+    '',
+    path
+      ? `A report was saved here:\n${path}\n\nPlease send that .zip file to whoever gave you Jogstick. It holds the error and version details only: no personal files, and nothing was sent anywhere.`
+      : `Jogstick could not save a report (tried ${reportDirs().join(', ')}). Please send a screenshot of this message instead.`,
+  ].join('\n');
+  if (E2E_NATIVE_FAIL) {
+    // The e2e driver checks the report and the dialog text; a dialog would block it.
+    console.log(`E2E-LOADFAIL ${JSON.stringify({ report: path, message: err.message, detail })}`);
+    app.exit(1);
+    return;
+  }
+  if (os === 'darwin') app.focus({ steal: true });
+  const r = await dialog.showMessageBox({
     type: 'error',
-    message: 'Jogstick could not save the test report.',
-    detail: `Tried: ${reportDirs().join(', ')}`,
+    message: 'Jogstick could not load its input module, so it can’t start.',
+    detail,
+    buttons: path ? [SHOW_IN_FOLDER, 'Quit'] : ['Quit'],
+    defaultId: 0,
   });
+  if (path && r.response === 0) shell.showItemInFolder(path);
+  app.exit(1);
+}
+
+function safeUser(): string {
+  try {
+    return userInfo().username;
+  } catch {
+    return '';
+  }
 }
 
 async function exportLog(): Promise<void> {
@@ -355,16 +454,11 @@ function main(): void {
   if (GATE_APP) log.add('warn', `JOGSTICK_GATE_APP set: the gate also accepts ${GATE_APP}`);
 
   try {
-    native = loadNative();
+    native = E2E_NATIVE_FAIL ? loadNative(E2E_NATIVE_FAIL) : loadNative();
     log.add('app', `native ${native.nativeVersion()}`);
   } catch (e) {
     log.add('error', `loading the native addon failed: ${String(e)}`);
-    void dialog.showMessageBox({
-      type: 'error',
-      message: 'Jogstick could not load its input module.',
-      detail: String(e),
-    });
-    app.quit();
+    void reportLoadFailure(e);
     return;
   }
   const n = native;

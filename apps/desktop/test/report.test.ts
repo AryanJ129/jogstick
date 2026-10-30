@@ -105,8 +105,26 @@ describe('test report', () => {
   it('redaction handles both slash styles and case, and leaves short names alone', () => {
     const r = redactor('C:\\Users\\Ann', 'Ann');
     expect(r('C:\\Users\\Ann\\x and c:/users/ann/y')).toBe('~\\x and ~/y');
+    // Inside a .json file backslashes are escaped; the home folder must still go, even when the
+    // user name rule can't help (a name under 3 letters, or a folder named differently).
+    const json = JSON.stringify({ p: 'C:\\Users\\Al\\AppData' });
+    expect(redactor('C:\\Users\\Al', 'Al')(json)).toBe(JSON.stringify({ p: '~\\AppData' }));
+    expect(redactor('C:\\Users\\Ann', 'someoneelse')(JSON.stringify(['C:\\Users\\Ann']))).toBe(
+      '["~"]',
+    );
     const short = redactor('/Users/al', 'al');
     expect(short('/Users/al/x final')).toBe('~/x final');
+  });
+
+  it('redaction also catches 8.3 short names, other profiles and non-ASCII names', () => {
+    const r = redactor('C:\\Users\\Christopher', 'Christopher');
+    expect(r('temp C:\\Users\\CHRIST~1\\AppData\\Local\\Temp\\x')).toBe(
+      'temp ~\\AppData\\Local\\Temp\\x',
+    );
+    expect(r(JSON.stringify('D:\\Users\\Other\\y'))).toBe(JSON.stringify('~\\y'));
+    expect(redactor('/Users/jose', 'José')('user José here, /Users/maria/x')).toBe(
+      'user <user> here, ~/x',
+    );
   });
 
   it('the collector keeps gate events and errors after the Console rolls over', () => {

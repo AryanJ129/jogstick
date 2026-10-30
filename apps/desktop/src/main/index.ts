@@ -1,5 +1,5 @@
 import { unboundCommands } from '@jogstick/engine';
-import { app, BrowserWindow, dialog, powerMonitor, screen, shell } from 'electron';
+import { app, BrowserWindow, dialog, Notification, powerMonitor, screen, shell } from 'electron';
 import { writeFileSync } from 'node:fs';
 import { release as osRelease, userInfo } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -185,11 +185,15 @@ function consoleHeader(): string[] {
  * isn't writable (Program Files, a translocated macOS app, a dev build).
  */
 function reportDirs(): string[] {
+  // A portable .exe (electron-builder) runs from a temp folder deleted at quit; it names its own.
+  const portable = process.env['PORTABLE_EXECUTABLE_DIR'];
   const beside = !packaged
     ? null
-    : os === 'darwin'
-      ? dirname(resolve(process.execPath, '..', '..', '..'))
-      : dirname(process.execPath);
+    : portable
+      ? portable
+      : os === 'darwin'
+        ? dirname(resolve(process.execPath, '..', '..', '..'))
+        : dirname(process.execPath);
   return [beside, app.getPath('downloads'), app.getPath('desktop')].filter(
     (d): d is string => d !== null,
   );
@@ -284,9 +288,18 @@ async function exportReport(): Promise<void> {
   }
   const { name, data } = report;
   for (const dir of reportDirs()) {
-    const path = join(dir, name);
+    let path = join(dir, name);
     try {
-      writeFileSync(path, data);
+      // Never overwrite an earlier report (two clicks in the same second): -2, -3, …
+      for (let i = 2; ; i++) {
+        try {
+          writeFileSync(path, data, { flag: 'wx' });
+          break;
+        } catch (e) {
+          if ((e as NodeJS.ErrnoException).code !== 'EEXIST' || i > 99) throw e;
+          path = join(dir, name.replace(/\.zip$/, `-${i}.zip`));
+        }
+      }
     } catch (e) {
       log.add('warn', `test report: can't write in ${dir} (${String(e)}); trying the next folder`);
       continue;
@@ -402,6 +415,13 @@ function main(): void {
 
   h.onStatus(() => refreshUi());
   h.onCommandEcho((e) => overlay?.show(echoView(e), h.status().bounds, true));
+  h.onTestModeForcedOff = () => {
+    if (Notification.isSupported())
+      new Notification({
+        title: 'Jogstick: Test with harness is off',
+        body: 'DaVinci Resolve came to the front, so the controller drives Resolve again.',
+      }).show();
+  };
 
   if (os === 'darwin') {
     const trusted = n.axIsTrusted(!E2E_SCRIPT);

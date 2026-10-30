@@ -99,6 +99,8 @@ export class Host {
   /** The last time Resolve was in front, for the test report. */
   private lastResolve: (FrontmostInfo & { seenAt: string; elevated: boolean | null }) | null = null;
   private echoListeners = new Set<(e: CommandEcho) => void>();
+  /** Called when Resolve comes to the front and switches test mode off (the app tells the user). */
+  onTestModeForcedOff?: () => void;
   readonly now: () => number;
 
   constructor(
@@ -428,17 +430,24 @@ export class Host {
   private stillFront(): boolean {
     if (this.deps.os !== 'win32') return true;
     const front = this.frontmost();
-    if (this.evaluate(front).open) return true;
+    // The same app the gate opened on, not just any app the gate would accept: test mode accepts
+    // both the harness and Resolve, and a switch between them must go through onFrontmost.
+    const same = front !== null && front.id.toLowerCase() === this.gate.app?.toLowerCase();
+    if (same && this.evaluate(front).open) return true;
     setTimeout(() => this.onFrontmost(front), 0);
     return false;
   }
 
   private onFrontmost(front: FrontmostInfo | null): void {
+    // Our own windows (the Windows tray menu takes the foreground while it is open) don't change
+    // what was in front before them, so the tray still knows Resolve is there.
     const resolveFront =
-      front !== null &&
-      this.config.profile.appMatch[this.deps.os].some(
-        (m) => m.toLowerCase() === front.id.toLowerCase(),
-      );
+      front?.pid === process.pid
+        ? this.resolveFront
+        : front !== null &&
+          this.config.profile.appMatch[this.deps.os].some(
+            (m) => m.toLowerCase() === front.id.toLowerCase(),
+          );
     const resolveChanged = resolveFront !== this.resolveFront;
     this.resolveFront = resolveFront;
     if (front && resolveFront)
@@ -450,6 +459,7 @@ export class Host {
     if (resolveFront && this.testMode) {
       this.testMode = false;
       this.deps.log.add('app', 'test mode off: DaVinci Resolve came to the front');
+      this.onTestModeForcedOff?.();
     }
     const next = this.evaluate(front);
     const boundsChanged = front?.bounds?.join() !== this.bounds?.join();
@@ -467,6 +477,12 @@ export class Host {
     if (was && !next.open) {
       this.run({ kind: 'gate', open: false }, true);
       this.releaseAll(`gate closed: ${next.reason}`);
+    } else if (was && next.open) {
+      // Open on a different app (harness → Resolve in test mode, Resolve ↔ Resolve Lite): what is
+      // held or queued belongs to the old one. Close, release, re-open: held inputs need a re-press.
+      this.run({ kind: 'gate', open: false }, true);
+      this.releaseAll(`gate moved to ${next.app ?? '?'}`);
+      this.run({ kind: 'gate', open: true });
     } else if (!was && next.open) this.run({ kind: 'gate', open: true });
     this.emitStatus();
   }

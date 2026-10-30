@@ -7,7 +7,7 @@
 #   scripts/harness-mac.sh            self-test (exit 0 = all checks passed)
 #   scripts/harness-mac.sh --log      open the harness and log events until closed
 #   scripts/harness-mac.sh --build    build and sign only (signing briefly shows SecurityAgent,
-#                                     which takes focus; scripts/e2e-mac.ts signs first, then opens)
+#                                     which takes focus; scripts/e2e.ts signs first, then opens)
 set -eu
 
 root="$(cd "$(dirname "$0")/.." && pwd)"

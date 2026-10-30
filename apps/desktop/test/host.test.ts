@@ -329,6 +329,44 @@ describe('Host', () => {
       expect(host.status().gate.reason).toBe('notTarget');
     });
 
+    it('harness → Resolve with a button held: released at the switch, nothing carries over', () => {
+      let forcedOff = 0;
+      host.onTestModeForcedOff = () => forcedOff++;
+      fake.setFront(harness);
+      host.setTestMode(true);
+      press(R3);
+      expect(fake.calls).toEqual(['mouse left down']);
+      fake.setFront({});
+      expect(fake.calls).toEqual(['mouse left down', 'releaseAll']);
+      expect(forcedOff).toBe(1);
+      release(R3); // the up was already sent by releaseAll; nothing reaches Resolve
+      vi.advanceTimersByTime(50);
+      expect(fake.calls).toEqual(['mouse left down', 'releaseAll']);
+      tap(A); // a fresh press works in Resolve as usual
+      expect(injected()).toContain('down Cmd+KeyB');
+    });
+
+    it("the tray menu taking the foreground doesn't hide that Resolve is in front", () => {
+      fake.setFront({});
+      fake.setFront({ id: 'dev.jogstick.app', name: 'Jogstick', pid: process.pid });
+      expect(host.status().resolveFront).toBe(true);
+      expect(host.setTestMode(true)).toBe(false);
+    });
+
+    it('Windows: Resolve in front before the watcher reports it stops a combo begun on the harness', () => {
+      host.stop('test');
+      makeHost('win32');
+      fake.setFront({ id: 'jogstick-harness.exe', name: 'jogstick-harness' });
+      host.setTestMode(true);
+      press(A);
+      expect(fake.calls).toEqual(['mods Ctrl']);
+      fake.setFrontUnreported({ id: 'Resolve.exe', name: 'Resolve' });
+      vi.advanceTimersByTime(40);
+      expect(fake.calls.filter((c) => c.startsWith('down'))).toEqual([]);
+      expect(host.status().testMode).toBe(false);
+      expect(fake.calls).toContain('releaseAll');
+    });
+
     it('turning it off closes the gate on the harness and releases', () => {
       fake.setFront(harness);
       host.setTestMode(true);

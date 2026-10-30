@@ -58,16 +58,29 @@ function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-/** Replace the home folder (either slash style, any case) with `~` and the user name with `<user>`. */
+/**
+ * Replace the home folder (either slash style, any case, and as JSON writes it: `C:\\Users\\Ann`)
+ * with `~`, and the user name with `<user>`.
+ */
 export function redactor(home: string, user: string): (text: string) => string {
-  const homes = [...new Set([home, home.replace(/\\/g, '/'), home.replace(/\//g, '\\')])]
+  const back = home.replace(/\//g, '\\');
+  const variants = [home, home.replace(/\\/g, '/'), back, back.replace(/\\/g, '\\\\')];
+  const homes = [...new Set(variants)]
     .filter((h) => h.length > 1)
     .sort((a, b) => b.length - a.length);
   const homeRe = homes.length ? new RegExp(homes.map(escapeRegExp).join('|'), 'gi') : null;
-  // Only a whole word, and only a name long enough not to eat ordinary words.
-  const userRe = user.length >= 3 ? new RegExp(`\\b${escapeRegExp(user)}\\b`, 'gi') : null;
+  // Only a whole word (Unicode-aware: "José"), and only a name long enough not to eat ordinary words.
+  const userRe =
+    user.length >= 3
+      ? new RegExp(`(?<![\\p{L}\\p{N}_])${escapeRegExp(user)}(?![\\p{L}\\p{N}_])`, 'giu')
+      : null;
   return (text) => {
     let out = homeRe ? text.replace(homeRe, '~') : text;
+    // Any other profile folder: 8.3 short names (C:\Users\RUNNER~1, common in %TEMP%), another
+    // account, JSON-escaped backslashes, macOS /Users/<name>.
+    out = out
+      .replace(/[A-Za-z]:(?:\\\\|\\|\/)Users(?:\\\\|\\|\/)[^\\/\s"']+/gi, '~')
+      .replace(/(?<![\w.~])\/Users\/[^/\s"']+/g, '~');
     if (userRe) out = out.replace(userRe, '<user>');
     return out;
   };

@@ -107,7 +107,13 @@ export interface LoadFailureInput {
   /** The Console so far (start-up lines and the error). */
   console: string;
   system: Record<string, unknown>;
-  error: { message: string; code?: string | undefined; stack?: string | undefined };
+  error: {
+    message: string;
+    code?: string | undefined;
+    /** loadErrorCauses(): what each load attempt actually failed with. */
+    causes?: string[];
+    stack?: string | undefined;
+  };
   /** What is in the native module's folder: name → size in bytes, or null if the folder is missing. */
   nativeFiles: Record<string, number> | null;
   nativeDir: string;
@@ -128,18 +134,37 @@ Nothing else is collected, and nothing was sent anywhere. Your home folder and u
 replaced with ~ and <user>.
 `;
 
+/**
+ * napi's loader throws a generic "Cannot find native binding. npm has a bug…" and hangs what each
+ * attempt really failed with ("not a valid Win32 application", "slice is not valid mach-o file",
+ * "Cannot find module …") on `.cause`, newest first. Those, in attempt order, are the exact error.
+ */
+export function loadErrorCauses(e: unknown): string[] {
+  const out: string[] = [];
+  let c = (e as { cause?: unknown } | null)?.cause;
+  for (let i = 0; c != null && i < 20; i++) {
+    const msg = c instanceof Error ? c.message : String(c);
+    if (!out.includes(msg)) out.unshift(msg);
+    c = (c as { cause?: unknown }).cause;
+  }
+  return out;
+}
+
 /** The report written when the native module can't load: no host, no controller, no profile. */
 export function loadFailureFiles(r: LoadFailureInput): ReportFile[] {
   const clean = redactor(r.redact.home, r.redact.user);
   const listing =
     r.nativeFiles === null
-      ? '(the folder does not exist)'
+      ? '(the folder does not exist or cannot be read)'
       : Object.entries(r.nativeFiles)
           .map(([name, size]) => `  ${name}  ${size} bytes`)
           .join('\n') || '(the folder is empty)';
   const loadError = [
     `message: ${r.error.message}`,
     `code: ${r.error.code ?? '(none)'}`,
+    '',
+    'what each load attempt failed with:',
+    ...(r.error.causes?.length ? r.error.causes.map((c) => `  - ${c}`) : ['  (no causes)']),
     '',
     `native module folder: ${r.nativeDir}`,
     listing,

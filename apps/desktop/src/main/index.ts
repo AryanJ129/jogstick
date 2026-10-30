@@ -1,6 +1,6 @@
 import { unboundCommands } from '@jogstick/engine';
 import { app, BrowserWindow, dialog, Notification, powerMonitor, screen, shell } from 'electron';
-import { readdirSync, statSync, writeFileSync } from 'node:fs';
+import { lstatSync, readdirSync, writeFileSync } from 'node:fs';
 import { release as osRelease, userInfo } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import resolveDefault from '../../../../packages/profiles/resolve-default.json';
@@ -12,7 +12,14 @@ import type { Native } from './native';
 import { echoView, Overlay, overlayView } from './overlay';
 import { GamepadSource, preloadPath, ReplaySource, XInputSource } from './pad';
 import type { PadSource } from './pad';
-import { loadFailureFiles, ReportCollector, reportFiles, reportName, zip } from './report';
+import {
+  loadErrorCauses,
+  loadFailureFiles,
+  ReportCollector,
+  reportFiles,
+  reportName,
+  zip,
+} from './report';
 import { Store } from './store';
 import { AppTray } from './tray';
 
@@ -343,15 +350,25 @@ function saveReport(name: string, data: Buffer): string | null {
  */
 async function reportLoadFailure(e: unknown): Promise<void> {
   const err = e instanceof Error ? e : new Error(String(e));
+  const causes = loadErrorCauses(err);
+  // The exact error: what loading the .node failed with, not napi's generic "npm has a bug" text.
+  const exact = causes.length ? causes.join('\n') : err.message;
+  // The dialog keeps each failure's first line (the "Require stack" lines push the report's path
+  // and the buttons off screen); load-error.txt keeps them whole.
+  const shown = (causes.length ? causes : [err.message])
+    .map((c) => `• ${c.split('\n')[0] ?? c}`)
+    .join('\n');
+  log.add('error', `native load failure: ${exact}`);
   const at = new Date();
-  const dir = nativeDir();
+  const dir = E2E_NATIVE_FAIL ? dirname(E2E_NATIVE_FAIL) : nativeDir();
   let nativeFiles: Record<string, number> | null;
   try {
+    // lstat: a dangling symlink (Electron's SingletonLock, say) must not hide the other files.
     nativeFiles = Object.fromEntries(
-      readdirSync(dir).map((f) => [f, statSync(join(dir, f)).size] as const),
+      readdirSync(dir).map((f) => [f, lstatSync(join(dir, f)).size] as const),
     );
   } catch {
-    nativeFiles = null; // the folder is missing (or unreadable): the report says so
+    nativeFiles = null; // the folder is missing or can't be read: the report says so
   }
   let path: string | null = null;
   try {
@@ -378,6 +395,7 @@ async function reportLoadFailure(e: unknown): Promise<void> {
       error: {
         message: err.message,
         code: (err as NodeJS.ErrnoException).code,
+        causes,
         stack: err.stack,
       },
       nativeFiles,
@@ -390,7 +408,7 @@ async function reportLoadFailure(e: unknown): Promise<void> {
     log.add('error', `load-failure report: ${String(re)}`);
   }
   const detail = [
-    err.message,
+    shown,
     '',
     path
       ? `A report was saved here:\n${path}\n\nPlease send that .zip file to whoever gave you Jogstick. It holds the error and version details only: no personal files, and nothing was sent anywhere.`
@@ -398,7 +416,7 @@ async function reportLoadFailure(e: unknown): Promise<void> {
   ].join('\n');
   if (E2E_NATIVE_FAIL) {
     // The e2e driver checks the report and the dialog text; a dialog would block it.
-    console.log(`E2E-LOADFAIL ${JSON.stringify({ report: path, message: err.message, detail })}`);
+    console.log(`E2E-LOADFAIL ${JSON.stringify({ report: path, message: shown, detail })}`);
     app.exit(1);
     return;
   }

@@ -6,6 +6,7 @@ import { crc32, inflateRawSync } from 'node:zlib';
 import { describe, expect, it } from 'vitest';
 import { Log } from '../src/main/log';
 import {
+  loadErrorCauses,
   loadFailureFiles,
   redactor,
   ReportCollector,
@@ -184,7 +185,38 @@ describe('test report', () => {
       createdAt: new Date(),
     });
     expect(missing.find((f) => f.name === 'load-error.txt')?.data).toContain(
-      '(the folder does not exist)',
+      '(the folder does not exist or cannot be read)',
+    );
+  });
+
+  it("the exact load error is napi's cause chain, in attempt order, not its generic message", () => {
+    // packages/native/index.js: createLoadErrorChain(loadErrors) links each error to the one before.
+    const chain = [
+      'first: not a valid Win32 application',
+      'second: Cannot find module x',
+    ].reduce<Error | null>((prev, msg) => {
+      const e = new Error(msg);
+      e.cause = prev;
+      return e;
+    }, null);
+    const top = new Error('Cannot find native binding. npm has a bug related to optional deps');
+    top.cause = chain;
+    expect(loadErrorCauses(top)).toEqual([
+      'first: not a valid Win32 application',
+      'second: Cannot find module x',
+    ]);
+    expect(loadErrorCauses(new Error('plain'))).toEqual([]);
+    const files = loadFailureFiles({
+      console: '',
+      system: {},
+      error: { message: top.message, causes: loadErrorCauses(top) },
+      nativeFiles: {},
+      nativeDir: '/x',
+      redact: { home, user: 'tester' },
+      createdAt: new Date(),
+    });
+    expect(files.find((f) => f.name === 'load-error.txt')?.data).toContain(
+      '  - first: not a valid Win32 application\n  - second: Cannot find module x',
     );
   });
 

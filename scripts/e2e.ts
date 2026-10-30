@@ -16,7 +16,14 @@
 // Mouse buttons/moves are not driven here (the cursor may be outside the harness window, and a
 // click would land in another app); the harness self-test covers mouse injection.
 import { spawn, execFileSync } from 'node:child_process';
-import { appendFileSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  appendFileSync,
+  copyFileSync,
+  mkdtempSync,
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs';
 import { createRequire } from 'node:module';
 import { homedir, tmpdir, userInfo } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -270,15 +277,18 @@ async function harnessSettled(): Promise<boolean> {
 }
 
 /**
- * A native module that won't load (a junk `.node`): the host must not quit silently. It saves a
- * report with the exact error and the versions, says where it is, and exits 1. Needs no harness.
+ * A native module that won't load: the host must not quit silently. It saves a report with the
+ * exact error and the versions, says where it is, and exits 1. Needs no harness. The real napi
+ * loader (a copy of packages/native/index.js) next to a junk `.node`, as a broken install has.
  */
 async function loadFailure(): Promise<[boolean, string][]> {
   const out: [boolean, string][] = [];
   const ok = (pass: boolean, what: string) => out.push([pass, what]);
   const dir = mkdtempSync(join(tmpdir(), 'jogstick-e2e-loadfail-'));
-  const broken = join(dir, 'broken.node');
-  writeFileSync(broken, 'not a native module');
+  const nodeName = `jogstick-native.${os === 'win32' ? 'win32-x64-msvc' : `${os}-${process.arch}`}.node`;
+  writeFileSync(join(dir, nodeName), 'not a native module');
+  const broken = join(dir, 'index.js');
+  copyFileSync(join(root, 'packages/native/index.js'), broken);
   const electron = require('electron') as string;
   const host = spawn(electron, [join(root, 'apps/desktop')], {
     env: { ...process.env, JOGSTICK_E2E_NATIVE_FAIL: broken, JOGSTICK_USER_DATA: dir },
@@ -291,8 +301,16 @@ async function loadFailure(): Promise<[boolean, string][]> {
   const code = await new Promise<number | null>((r) => host.on('exit', r));
   const f = failure as { report: string | null; message: string; detail: string } | null;
   ok(code === 1, `load failure: host exited 1 (${code})`);
+  // The OS's own words for a junk binary, not napi's generic "Cannot find native binding".
+  const reason = os === 'win32' ? 'not a valid Win32 application' : 'not valid mach-o';
   ok(
-    !!f && f.message.length > 0 && f.detail.startsWith(f.message),
+    !!f &&
+      f.detail.startsWith(f.message) &&
+      f.message.includes(nodeName) &&
+      f.message.includes(reason) &&
+      !f.message.includes('Cannot find native binding') &&
+      !f.message.includes('Require stack') &&
+      f.detail.split('\n').length <= 20,
     `load failure: the dialog shows the exact error (${f?.message.split('\n')[0] ?? 'no E2E-LOADFAIL line'})`,
   );
   ok(
@@ -313,8 +331,8 @@ async function loadFailure(): Promise<[boolean, string][]> {
   );
   const err = zip.get('load-error.txt') ?? '';
   ok(
-    err.includes('broken.node') && err.includes('code: ERR_DLOPEN_FAILED'),
-    `load failure: load-error.txt has the error (${err.split('\n')[0] ?? ''})`,
+    err.includes(reason) && err.includes(`${nodeName}  19 bytes`),
+    `load failure: load-error.txt has the error and the folder listing (${err.split('\n')[0] ?? ''})`,
   );
   const sys = JSON.parse(zip.get('system.json') ?? '{}') as {
     jogstick?: string;

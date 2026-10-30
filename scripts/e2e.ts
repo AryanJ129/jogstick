@@ -16,7 +16,14 @@
 // Mouse buttons/moves are not driven here (the cursor may be outside the harness window, and a
 // click would land in another app); the harness self-test covers mouse injection.
 import { spawn, execFileSync } from 'node:child_process';
-import { appendFileSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  appendFileSync,
+  copyFileSync,
+  mkdtempSync,
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs';
 import { createRequire } from 'node:module';
 import { homedir, tmpdir, userInfo } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -269,7 +276,88 @@ async function harnessSettled(): Promise<boolean> {
   return false;
 }
 
+/**
+ * A native module that won't load: the host must not quit silently. It saves a report with the
+ * exact error and the versions, says where it is, and exits 1. Needs no harness. The real napi
+ * loader (a copy of packages/native/index.js) next to a junk `.node`, as a broken install has.
+ */
+async function loadFailure(): Promise<[boolean, string][]> {
+  const out: [boolean, string][] = [];
+  const ok = (pass: boolean, what: string) => out.push([pass, what]);
+  const dir = mkdtempSync(join(tmpdir(), 'jogstick-e2e-loadfail-'));
+  const nodeName = `jogstick-native.${os === 'win32' ? 'win32-x64-msvc' : `${os}-${process.arch}`}.node`;
+  writeFileSync(join(dir, nodeName), 'not a native module');
+  const broken = join(dir, 'index.js');
+  copyFileSync(join(root, 'packages/native/index.js'), broken);
+  const electron = require('electron') as string;
+  const host = spawn(electron, [join(root, 'apps/desktop')], {
+    env: { ...process.env, JOGSTICK_E2E_NATIVE_FAIL: broken, JOGSTICK_USER_DATA: dir },
+    stdio: ['ignore', 'pipe', 'inherit'],
+  });
+  let failure: { report: string | null; message: string; detail: string } | null = null;
+  createInterface({ input: host.stdout }).on('line', (line) => {
+    if (line.startsWith('E2E-LOADFAIL ')) failure = JSON.parse(line.slice(13));
+  });
+  const code = await new Promise<number | null>((r) => host.on('exit', r));
+  const f = failure as { report: string | null; message: string; detail: string } | null;
+  ok(code === 1, `load failure: host exited 1 (${code})`);
+  // The OS's own words for a junk binary, not napi's generic "Cannot find native binding".
+  const reason = os === 'win32' ? 'not a valid Win32 application' : 'not valid mach-o';
+  ok(
+    !!f &&
+      f.detail.startsWith(f.message) &&
+      f.message.includes(nodeName) &&
+      f.message.includes(reason) &&
+      !f.message.includes('Cannot find native binding') &&
+      !f.message.includes('Require stack') &&
+      f.detail.split('\n').length <= 20,
+    `load failure: the dialog shows the exact error (${f?.message.split('\n')[0] ?? 'no E2E-LOADFAIL line'})`,
+  );
+  ok(
+    !!f?.report && f.detail.includes(f.report) && /send that \.zip/.test(f.detail),
+    `load failure: the dialog names the report and asks to send it (${f?.report ?? 'no report'})`,
+  );
+  let zip = new Map<string, string>();
+  try {
+    if (f?.report) zip = readZip(readFileSync(f.report));
+  } catch (e) {
+    console.log(`load failure report: ${String(e)}`);
+  }
+  const parts = ['README.txt', 'load-error.txt', 'system.json', 'console.txt'];
+  ok(
+    /jogstick-report-\d{4}-\d{2}-\d{2}-\d{6}\.zip$/.test(f?.report ?? '') &&
+      parts.every((p) => zip.has(p)),
+    `load failure: report has all ${parts.length} parts (${[...zip.keys()].join(', ') || 'none'})`,
+  );
+  const err = zip.get('load-error.txt') ?? '';
+  ok(
+    err.includes(reason) && err.includes(`${nodeName}  19 bytes`),
+    `load failure: load-error.txt has the error and the folder listing (${err.split('\n')[0] ?? ''})`,
+  );
+  const sys = JSON.parse(zip.get('system.json') ?? '{}') as {
+    jogstick?: string;
+    versions?: { electron?: string };
+    os?: { platform?: string; version?: string };
+  };
+  ok(
+    !!sys.jogstick && !!sys.versions?.electron && sys.os?.platform === os && !!sys.os.version,
+    `load failure: system.json has versions and OS (${sys.jogstick} / electron ${sys.versions?.electron} / ${sys.os?.platform} ${sys.os?.version})`,
+  );
+  const user = userInfo().username.toLowerCase();
+  const leaks = [...zip].filter(
+    ([, text]) =>
+      text.toLowerCase().includes(homedir().toLowerCase()) ||
+      (user.length >= 3 && new RegExp(`\\b${user}\\b`).test(text.toLowerCase())),
+  );
+  ok(
+    zip.size > 0 && leaks.length === 0,
+    `load failure: report holds no home folder or user name (${leaks.map(([n]) => n).join(', ') || 'clean'})`,
+  );
+  return out;
+}
+
 async function main() {
+  const loadFailureResults = await loadFailure();
   console.log(`script: ${steps.length} steps, ${t} ms; userData ${userData}`);
   mkdirSync(dirname(harnessOut), { recursive: true });
   writeFileSync(harnessOut, '');
@@ -323,7 +411,7 @@ async function main() {
   await new Promise((r) => harness.on('exit', r));
   writeFileSync(join(work, 'host.log'), lines.join('\n'));
 
-  check(code, held, released, done, lines, echoes, reportPath);
+  check(code, held, released, done, lines, echoes, reportPath, loadFailureResults);
 }
 
 /** Read a zip through its central directory, as unzip/Explorer do, checking each CRC. */
@@ -393,8 +481,9 @@ function check(
   hostLines: string[],
   echoes: string[],
   reportPath: string | null,
+  earlier: [boolean, string][],
 ) {
-  const results: [boolean, string][] = [];
+  const results: [boolean, string][] = [...earlier];
   const ok = (pass: boolean, what: string) => results.push([pass, what]);
 
   // The gate follows the real front app: if anything else came to the front mid-run, the host

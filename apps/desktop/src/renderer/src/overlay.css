@@ -45,6 +45,7 @@ body[data-corner='bottomRight'] {
   letter-spacing: 0.08em;
   text-transform: uppercase;
   white-space: nowrap;
+  max-width: 100%;
   opacity: 1;
   transition:
     opacity var(--dur-panel) var(--ease-out),
@@ -84,6 +85,13 @@ body[data-corner='bottomRight'] {
 .label {
   display: inline-flex;
   gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+}
+/* A long test-mode echo ends in an ellipsis on the last part instead of being cut. */
+.label > span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .sep {
   color: var(--overlay-text);

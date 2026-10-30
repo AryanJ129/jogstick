@@ -285,6 +285,61 @@ describe('Host', () => {
     expect(fake.calls).toContain('releaseAll');
   });
 
+  describe('test with harness', () => {
+    const harness = { id: 'dev.jogstick.harness', name: 'jogstick-harness' };
+
+    it('is off by default: the harness in front gets nothing', () => {
+      fake.setFront(harness);
+      expect(host.status().testMode).toBe(false);
+      tap(A);
+      expect(injected()).toEqual([]);
+    });
+
+    it('on: the harness drives like Resolve, and each command is echoed with its keys', () => {
+      const echoes: string[] = [];
+      host.onCommandEcho((e) => echoes.push(`${e.what} → ${e.keys}`));
+      fake.setFront(harness);
+      expect(host.setTestMode(true)).toBe(true);
+      expect(host.status().gate).toMatchObject({ open: true, app: 'dev.jogstick.harness' });
+      tap(A);
+      expect(injected()).toEqual(['mods Cmd', 'down Cmd+KeyB', 'up Cmd+KeyB', 'mods -']);
+      expect(echoes).toEqual(['edit.splitClip → Cmd+B']);
+    });
+
+    it('is refused while Resolve is in front', () => {
+      fake.setFront({});
+      expect(host.status().resolveFront).toBe(true);
+      expect(host.setTestMode(true)).toBe(false);
+      expect(host.status().testMode).toBe(false);
+    });
+
+    it('switches itself off the moment Resolve comes to the front; Resolve then works as usual', () => {
+      const echoes: string[] = [];
+      host.onCommandEcho((e) => echoes.push(e.what));
+      fake.setFront(harness);
+      host.setTestMode(true);
+      fake.setFront({});
+      expect(host.status().testMode).toBe(false);
+      expect(host.status().gate).toMatchObject({ open: true, reason: 'open' });
+      tap(A);
+      expect(injected()).toContain('down Cmd+KeyB');
+      expect(echoes).toEqual([]);
+      // and the harness no longer counts
+      fake.setFront(harness);
+      expect(host.status().gate.reason).toBe('notTarget');
+    });
+
+    it('turning it off closes the gate on the harness and releases', () => {
+      fake.setFront(harness);
+      host.setTestMode(true);
+      press(R3);
+      host.setTestMode(false);
+      expect(host.status().gate).toMatchObject({ open: false, reason: 'notTarget' });
+      expect(fake.calls).toEqual(['mouse left down', 'releaseAll']);
+      release(R3);
+    });
+  });
+
   it('an injection error triggers releaseAll', () => {
     fake.setFront({});
     fake.n.modifierChanged = () => {

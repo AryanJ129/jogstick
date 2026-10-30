@@ -12,6 +12,8 @@ export type TrayState = 'connected' | 'color' | 'paused' | 'error';
 
 export interface TrayActions {
   togglePause(): void;
+  toggleTestMode(): void;
+  exportReport(): void;
   exportLog(): void;
   openUserData(): void;
   openAxSettings?: (() => void) | undefined;
@@ -39,8 +41,15 @@ const GATE_TEXT: Record<HostStatus['gate']['reason'], string> = {
 
 export function statusLines(s: HostStatus): string[] {
   const mode = s.mode.charAt(0).toUpperCase() + s.mode.slice(1);
+  const gate = !s.testMode
+    ? GATE_TEXT[s.gate.reason]
+    : s.gate.open
+      ? 'TEST MODE: driving jogstick-harness'
+      : s.gate.reason === 'notTarget' || s.gate.reason === 'unknown'
+        ? 'TEST MODE: waiting for jogstick-harness to be in front'
+        : `TEST MODE · ${GATE_TEXT[s.gate.reason]}`;
   return [
-    `${GATE_TEXT[s.gate.reason]}${s.gate.open ? ` · ${mode} mode` : ''}`,
+    `${gate}${s.gate.open ? ` · ${mode} mode` : ''}`,
     s.pad.connected ? `Controller: ${s.pad.name ?? 'connected'}` : 'No controller connected',
   ];
 }
@@ -95,6 +104,17 @@ export class AppTray {
       { label: s?.paused ? 'Resume' : 'Pause', click: () => this.actions.togglePause() },
       { label: 'Open Jogstick', click: () => this.actions.openWindow() },
       { type: 'separator' },
+      {
+        label: s?.resolveFront
+          ? 'Test with harness (not while Resolve is in front)'
+          : 'Test with harness (drives jogstick-harness, not Resolve)',
+        type: 'checkbox',
+        checked: s?.testMode ?? false,
+        enabled: !s?.resolveFront || (s?.testMode ?? false),
+        click: () => this.actions.toggleTestMode(),
+      },
+      { type: 'separator' },
+      { label: 'Export test report', click: () => this.actions.exportReport() },
       { label: 'Export Console log…', click: () => this.actions.exportLog() },
       { label: 'Open user data folder', click: () => this.actions.openUserData() },
       { type: 'separator' },

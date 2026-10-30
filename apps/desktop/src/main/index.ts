@@ -1,15 +1,18 @@
-import { app, BrowserWindow, dialog, powerMonitor, shell } from 'electron';
+import { unboundCommands } from '@jogstick/engine';
+import { app, BrowserWindow, dialog, powerMonitor, screen, shell } from 'electron';
 import { writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { release as osRelease, userInfo } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
 import resolveDefault from '../../../../packages/profiles/resolve-default.json';
 import resolveKeymap from '../../../../packages/profiles/resolve-keymap.json';
 import { Host } from './host';
 import { Log } from './log';
 import { loadNative, packaged } from './native';
 import type { Native } from './native';
-import { Overlay, overlayView } from './overlay';
+import { echoView, Overlay, overlayView } from './overlay';
 import { GamepadSource, preloadPath, ReplaySource, XInputSource } from './pad';
 import type { PadSource } from './pad';
+import { ReportCollector, reportFiles, reportName, zip } from './report';
 import { Store } from './store';
 import { AppTray } from './tray';
 
@@ -19,14 +22,17 @@ import { AppTray } from './tray';
  *   JOGSTICK_E2E_SCRIPT  replay this frame script instead of a real pad, then exit
  *   JOGSTICK_GATE_APP    an extra app id the gate accepts (the harness bundle id / exe)
  *   JOGSTICK_USER_DATA   use this folder as <userData>
- * A packaged build ignores all three: a replayed script would type into the gated app.
+ *   JOGSTICK_E2E_TEST_MODE  turn on "Test with harness" at start (the e2e's way to the harness)
+ * A packaged build ignores all of them: a replayed script would type into the gated app.
  */
 const devEnv = (name: string) => (packaged ? undefined : process.env[name]);
 const E2E_SCRIPT = devEnv('JOGSTICK_E2E_SCRIPT');
 const GATE_APP = devEnv('JOGSTICK_GATE_APP');
 const USER_DATA = devEnv('JOGSTICK_USER_DATA');
+const E2E_TEST_MODE = devEnv('JOGSTICK_E2E_TEST_MODE') === '1';
 
 const log = new Log(2000, Date.now, E2E_SCRIPT !== undefined);
+const collector = new ReportCollector(log);
 const os = process.platform === 'win32' ? 'win32' : 'darwin';
 
 if (USER_DATA) app.setPath('userData', USER_DATA);
@@ -36,6 +42,7 @@ if (process.platform === 'darwin') app.commandLine.appendSwitch('use-mock-keycha
 
 let native: Native | null = null;
 let host: Host | null = null;
+let padSource: PadSource | null = null;
 let tray: AppTray | null = null;
 let overlay: Overlay | null = null;
 let editor: BrowserWindow | null = null;
@@ -159,10 +166,10 @@ function refreshUi(): void {
   prevMode = s.mode;
 }
 
-async function exportLog(): Promise<void> {
+function consoleHeader(): string[] {
   const s = host?.status();
   const c = host?.currentConfig;
-  const header = [
+  return [
     `Jogstick ${app.getVersion()} · ${process.platform} ${process.getSystemVersion()} · ${process.arch}`,
     `Electron ${process.versions.electron} · native ${native?.nativeVersion() ?? 'not loaded'}`,
     `profile ${c?.profile.id ?? '?'} (${c?.profileSource ?? '?'}) · comboSpacingMs ${c?.profile.settings.comboSpacingMs ?? '?'}`,
@@ -170,6 +177,141 @@ async function exportLog(): Promise<void> {
     `gate ${s ? `${s.gate.reason} ${s.gate.app ?? ''}` : '?'} · pad ${s?.pad.name ?? 'none'}`,
     `warnings: ${[...warnings.values()].join(' | ') || 'none'}`,
   ];
+}
+
+/**
+ * Beside the app (the unzipped folder on Windows, the folder holding Jogstick.app on macOS), so a
+ * tester finds it next to Jogstick.exe. Falls back to Downloads, then Desktop, when that folder
+ * isn't writable (Program Files, a translocated macOS app, a dev build).
+ */
+function reportDirs(): string[] {
+  const beside = !packaged
+    ? null
+    : os === 'darwin'
+      ? dirname(resolve(process.execPath, '..', '..', '..'))
+      : dirname(process.execPath);
+  return [beside, app.getPath('downloads'), app.getPath('desktop')].filter(
+    (d): d is string => d !== null,
+  );
+}
+
+/** The report zip, from the live state (the tray action and the e2e driver both use it). */
+function buildReport(h: Host, n: Native, at: Date): { name: string; data: Buffer } {
+  const s = h.status();
+  const c = h.currentConfig;
+  const resolveProcess = os === 'win32' ? 'Resolve.exe' : 'Resolve';
+  const tryOr = <T>(f: () => T, fallback: T): T => {
+    try {
+      return f();
+    } catch {
+      return fallback;
+    }
+  };
+  const primary = screen.getPrimaryDisplay().id;
+  const files = reportFiles({
+    console: log.format(consoleHeader()),
+    system: {
+      jogstick: app.getVersion(),
+      packaged,
+      versions: {
+        electron: process.versions.electron,
+        chrome: process.versions.chrome,
+        node: process.versions.node,
+        native: n.nativeVersion(),
+      },
+      os: {
+        platform: process.platform,
+        version: process.getSystemVersion(),
+        kernel: osRelease(),
+        arch: process.arch,
+        locale: app.getLocale(),
+      },
+      displays: screen.getAllDisplays().map((d) => ({
+        size: [d.size.width, d.size.height],
+        scaleFactor: d.scaleFactor,
+        primary: d.id === primary,
+      })),
+      resolve: {
+        process: resolveProcess,
+        running: tryOr(() => n.isProcessRunning(resolveProcess), null),
+        inFront: s.resolveFront,
+        lastSeenInFront: h.diagnostics.lastResolve,
+      },
+      jogstickElevated: h.diagnostics.jogstickElevated,
+      accessibility: os === 'darwin' ? tryOr(() => n.axIsTrusted(false), null) : 'n/a',
+      gate: s.gate,
+      paused: s.paused,
+      testMode: s.testMode,
+      warnings: [...warnings.values()],
+    },
+    controller: {
+      connected: s.pad.connected,
+      name: s.pad.name,
+      source: padSource?.kind ?? null,
+      xinputSlots: os === 'win32' ? tryOr(() => n.padList(), null) : 'n/a',
+      mode: s.mode,
+      layers: s.layers,
+    },
+    profile: { source: c.profileSource, ...c.profile },
+    overrides: c.overrides,
+    settings: c.settings,
+    keymap: {
+      os,
+      unboundCommands: unboundCommands(c.profile, os, c.keymap, c.overrides),
+      overridden: Object.keys(c.overrides),
+    },
+    gateEvents: collector.gateEvents,
+    errors: collector.errors,
+    redact: { home: app.getPath('home'), user: tryOr(() => userInfo().username, '') },
+    createdAt: at,
+  });
+  return { name: reportName(at), data: zip(files, at) };
+}
+
+async function exportReport(): Promise<void> {
+  if (!host || !native) return;
+  let report: { name: string; data: Buffer };
+  try {
+    report = buildReport(host, native, new Date());
+  } catch (e) {
+    log.add('error', `test report: ${String(e)}`);
+    void dialog.showMessageBox({
+      type: 'error',
+      message: 'Jogstick could not build the test report.',
+      detail: String(e),
+    });
+    return;
+  }
+  const { name, data } = report;
+  for (const dir of reportDirs()) {
+    const path = join(dir, name);
+    try {
+      writeFileSync(path, data);
+    } catch (e) {
+      log.add('warn', `test report: can't write in ${dir} (${String(e)}); trying the next folder`);
+      continue;
+    }
+    log.add('app', `test report saved: ${path}`);
+    const r = await dialog.showMessageBox({
+      type: 'info',
+      message: 'Test report saved',
+      detail: `${path}\n\nSend this .zip file back. It holds Jogstick's own log and settings only: no personal files, and nothing was sent anywhere.`,
+      buttons: [os === 'darwin' ? 'Show in Finder' : 'Show in folder', 'OK'],
+      defaultId: 0,
+    });
+    if (r.response === 0) shell.showItemInFolder(path);
+    return;
+  }
+  log.add('error', 'test report: no folder could be written');
+  void dialog.showMessageBox({
+    type: 'error',
+    message: 'Jogstick could not save the test report.',
+    detail: `Tried: ${reportDirs().join(', ')}`,
+  });
+}
+
+async function exportLog(): Promise<void> {
+  const header = consoleHeader();
   const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
   const r = await dialog.showSaveDialog({
     title: 'Export Console log',
@@ -227,6 +369,7 @@ function main(): void {
   );
 
   const pad = pickPad(n);
+  padSource = pad;
   const h = new Host(
     { native: n, log, os, pad, extraGateApps: GATE_APP ? [GATE_APP] : [] },
     config,
@@ -239,6 +382,17 @@ function main(): void {
 
   tray = new AppTray(resourceDir('tray'), {
     togglePause: () => h.setPaused(!h.status().paused),
+    toggleTestMode: () => {
+      if (!h.setTestMode(!h.status().testMode))
+        void dialog.showMessageBox({
+          type: 'info',
+          message: 'Test with harness is off while DaVinci Resolve is in front.',
+          detail:
+            'Switch to another app first. Test mode also turns itself off whenever Resolve comes to the front.',
+        });
+      refreshUi();
+    },
+    exportReport: () => void exportReport(),
     exportLog: () => void exportLog(),
     openUserData: () => void shell.openPath(store.dir),
     openAxSettings: os === 'darwin' ? () => n.openAxSettings() : undefined,
@@ -247,6 +401,7 @@ function main(): void {
   });
 
   h.onStatus(() => refreshUi());
+  h.onCommandEcho((e) => overlay?.show(echoView(e), h.status().bounds, true));
 
   if (os === 'darwin') {
     const trusted = n.axIsTrusted(!E2E_SCRIPT);
@@ -273,6 +428,7 @@ function main(): void {
 
   if (E2E_SCRIPT && pad instanceof ReplaySource) runE2e(h, n, pad);
   h.start();
+  if (E2E_SCRIPT && E2E_TEST_MODE) h.setTestMode(true);
   checkWarnings();
   setInterval(checkWarnings, 10_000);
   refreshUi();
@@ -281,6 +437,7 @@ function main(): void {
 /** E2E: script marks go to stdout for the driver (`releaseAll` also runs it here); exit when done. */
 function runE2e(h: Host, n: Native, pad: ReplaySource): void {
   log.add('warn', `E2E MODE: replaying ${E2E_SCRIPT}`);
+  h.onCommandEcho((e) => console.log(`E2E-ECHO ${e.what} ${e.keys}`));
   const start = pad.start.bind(pad);
   pad.start = (sink) =>
     start({
@@ -312,6 +469,15 @@ function runE2e(h: Host, n: Native, pad: ReplaySource): void {
         const finish = () => {
           if (h.queueBusy) return void setTimeout(finish, 50);
           setTimeout(() => {
+            // The real test report, for the driver to open and check.
+            try {
+              const r = buildReport(h, n, new Date());
+              const path = join(app.getPath('userData'), r.name);
+              writeFileSync(path, r.data);
+              console.log(`E2E-REPORT ${path}`);
+            } catch (e) {
+              console.log(`E2E-REPORT-ERROR ${String(e)}`);
+            }
             const result = { held: n.heldState(), osHeld: n.osHeldState(), rumbles: pad.rumbles };
             console.log(`E2E-DONE ${JSON.stringify(result)}`);
             app.quit();

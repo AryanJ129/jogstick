@@ -18,9 +18,10 @@
 import { spawn, execFileSync } from 'node:child_process';
 import { appendFileSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { tmpdir } from 'node:os';
+import { homedir, tmpdir, userInfo } from 'node:os';
 import { dirname, join } from 'node:path';
 import { createInterface } from 'node:readline';
+import { crc32, inflateRawSync } from 'node:zlib';
 import { parseCombo, parseKeymap, resolveCommand } from '../packages/engine/src/index';
 import resolveKeymap from '../packages/profiles/resolve-keymap.json';
 
@@ -285,7 +286,9 @@ async function main() {
     env: {
       ...process.env,
       JOGSTICK_E2E_SCRIPT: scriptPath,
-      JOGSTICK_GATE_APP: HARNESS,
+      // The tray's "Test with harness", switched on at start: the run goes through the same gate
+      // path a user gets (JOGSTICK_GATE_APP still exists for other harness apps).
+      JOGSTICK_E2E_TEST_MODE: '1',
       JOGSTICK_USER_DATA: userData,
     },
     stdio: ['ignore', 'pipe', 'inherit'],
@@ -294,6 +297,8 @@ async function main() {
   let held: unknown = null;
   let released: unknown = null;
   let done: { held: Held; osHeld: Held; rumbles: string[] } | null = null;
+  const echoes: string[] = [];
+  let reportPath: string | null = null;
   const rl = createInterface({ input: host.stdout });
   rl.on('line', (line) => {
     lines.push(line);
@@ -309,6 +314,8 @@ async function main() {
     } else if (line.startsWith('E2E-HELD ')) held = JSON.parse(line.slice(9));
     else if (line.startsWith('E2E-RELEASED ')) released = JSON.parse(line.slice(13));
     else if (line.startsWith('E2E-DONE ')) done = JSON.parse(line.slice(9));
+    else if (line.startsWith('E2E-ECHO ')) echoes.push(line.slice(9));
+    else if (line.startsWith('E2E-REPORT ')) reportPath = line.slice(11);
   });
   const code = await new Promise<number | null>((r) => host.on('exit', r));
   await new Promise((r) => setTimeout(r, 300));
@@ -316,7 +323,27 @@ async function main() {
   await new Promise((r) => harness.on('exit', r));
   writeFileSync(join(work, 'host.log'), lines.join('\n'));
 
-  check(code, held, released, done, lines);
+  check(code, held, released, done, lines, echoes, reportPath);
+}
+
+/** Read a zip through its central directory, as unzip/Explorer do, checking each CRC. */
+function readZip(buf: Buffer): Map<string, string> {
+  const end = buf.length - 22;
+  if (buf.readUInt32LE(end) !== 0x06054b50) throw new Error('no end-of-central-directory record');
+  const out = new Map<string, string>();
+  let p = buf.readUInt32LE(end + 16);
+  for (let i = 0; i < buf.readUInt16LE(end + 10); i++) {
+    const size = buf.readUInt32LE(p + 20);
+    const nameLen = buf.readUInt16LE(p + 28);
+    const at = buf.readUInt32LE(p + 42);
+    const name = buf.subarray(p + 46, p + 46 + nameLen).toString('utf8');
+    const start = at + 30 + buf.readUInt16LE(at + 26) + buf.readUInt16LE(at + 28);
+    const data = inflateRawSync(buf.subarray(start, start + size));
+    if (crc32(data) !== buf.readUInt32LE(p + 16)) throw new Error(`${name}: CRC mismatch`);
+    out.set(name, data.toString('utf8'));
+    p += 46 + nameLen;
+  }
+  return out;
 }
 
 // --- check ------------------------------------------------------------------------
@@ -364,6 +391,8 @@ function check(
   released: unknown,
   done: { held: Held; osHeld: Held; rumbles: string[] } | null,
   hostLines: string[],
+  echoes: string[],
+  reportPath: string | null,
 ) {
   const results: [boolean, string][] = [];
   const ok = (pass: boolean, what: string) => results.push([pass, what]);
@@ -460,6 +489,75 @@ function check(
   const want = `[gate] open (open, ${HARNESS})`.toLowerCase();
   const opened = hostLines.some((l) => l.toLowerCase().includes(want));
   ok(opened, 'gate opened for the harness');
+  ok(
+    hostLines.some((l) => l.includes('test mode on: driving')),
+    'the harness was reached through "Test with harness"',
+  );
+
+  // Test mode echoes every command with the keys it became (the overlay shows these).
+  const mod = os === 'darwin' ? 'Cmd' : 'Ctrl';
+  ok(
+    echoes.includes(`edit.splitClip ${mod}+B`),
+    `test mode echoed A as "edit.splitClip ${mod}+B" (${echoes.length} echoes)`,
+  );
+  const commandKeys = expected.filter((e) => e.kind === 'key').length;
+  const commandEchoes = echoes.filter((e) => !e.startsWith('key ')).length;
+  // Every 'key' expectation comes from a command (expectCommand, or an override via expectCombo).
+  ok(
+    commandEchoes >= commandKeys,
+    `an echo per command (${commandEchoes} for ${commandKeys} expected keys)`,
+  );
+
+  // The test report the tray writes, built from this run's state.
+  let report = new Map<string, string>();
+  try {
+    if (reportPath) report = readZip(readFileSync(reportPath));
+  } catch (e) {
+    console.log(`report: ${String(e)}`);
+  }
+  const parts = [
+    'README.txt',
+    'console.txt',
+    'system.json',
+    'controller.json',
+    'profile.json',
+    'keymap-overrides.json',
+    'settings.json',
+    'keymap.json',
+    'gate-events.txt',
+    'errors.txt',
+  ];
+  ok(
+    parts.every((p) => report.has(p)),
+    `test report has all ${parts.length} parts (${[...report.keys()].join(', ') || reportPath || 'no report'})`,
+  );
+  const sys = JSON.parse(report.get('system.json') ?? '{}') as {
+    versions?: { native?: string };
+    testMode?: boolean;
+  };
+  ok(
+    !!sys.versions?.native && sys.testMode === true,
+    `report system.json: native ${sys.versions?.native ?? '?'}, testMode ${String(sys.testMode)}`,
+  );
+  ok(
+    (report.get('gate-events.txt') ?? '').includes('open (open,') &&
+      (report.get('console.txt') ?? '').includes('test mode on'),
+    'report has the gate events and the Console',
+  );
+  ok(
+    JSON.parse(report.get('keymap-overrides.json') ?? 'null')?.['edit.pasteInsert']?.[os] === 'F13',
+    'report has the active keymap override (F13)',
+  );
+  const user = userInfo().username.toLowerCase();
+  const leaks = [...report].filter(
+    ([, text]) =>
+      text.toLowerCase().includes(homedir().toLowerCase()) ||
+      (user.length >= 3 && new RegExp(`\\b${user}\\b`).test(text.toLowerCase())),
+  );
+  ok(
+    report.size > 0 && leaks.length === 0,
+    `report holds no home folder or user name (${leaks.map(([n]) => n).join(', ') || 'clean'})`,
+  );
   ok(code === 0, `host exited 0 (${code})`);
 
   for (const [pass, what] of results) console.log(`${pass ? 'PASS' : 'FAIL'} ${what}`);

@@ -1,6 +1,6 @@
 import { BrowserWindow, screen } from 'electron';
 import type { OverlayCorner } from '@jogstick/engine';
-import type { HostStatus } from './host';
+import type { CommandEcho, HostStatus } from './host';
 
 /**
  * The overlay label (BUILD_BRIEF → Overlay, BRAND_KIT §3.2): click-through, never focusable,
@@ -40,7 +40,7 @@ export function overlayView(s: HostStatus, prevMode: string | null): OverlayView
           sticky: true,
           flash: false,
         };
-      const parts = [s.mode.toUpperCase()];
+      const parts = s.testMode ? ['TEST', s.mode.toUpperCase()] : [s.mode.toUpperCase()];
       const layer = s.layers.at(-1);
       if (layer) parts.push(layer.toUpperCase());
       if (s.fine) parts.push('FINE');
@@ -76,7 +76,21 @@ export function overlayView(s: HostStatus, prevMode: string | null): OverlayView
   }
 }
 
-const WIDTH = 360;
+/** Test mode: one output, e.g. `TEST · edit.blade · Cmd+B`; fades like the mode label. */
+export function echoView(e: CommandEcho): OverlayView {
+  return {
+    visible: true,
+    tone: 'live',
+    icon: 'lamp',
+    parts: ['TEST', e.what, e.keys],
+    sticky: false,
+    flash: false,
+  };
+}
+
+// Room for a test-mode echo (`TEST · edit.rippleDelete · Shift+Backspace`); the window is
+// transparent and click-through, and the chip hugs the chosen corner.
+const WIDTH = 480;
 const HEIGHT = 46;
 const MARGIN = 16;
 
@@ -116,7 +130,8 @@ export class Overlay {
   }
 
   /** `bounds` = the frontmost window ([x, y, w, h]; physical pixels on Windows, points on macOS). */
-  show(view: OverlayView, bounds: number[] | undefined): void {
+  /** `force`: send even if unchanged (test-mode echoes repeat, e.g. jog arrows, and must not fade). */
+  show(view: OverlayView, bounds: number[] | undefined, force = false): void {
     if (!this.enabled || !view.visible) {
       this.hide();
       return;
@@ -124,7 +139,7 @@ export class Overlay {
     const win = this.window();
     const key = JSON.stringify([view, this.corner]);
     this.place(win, bounds);
-    if (key !== this.last || view.flash) {
+    if (key !== this.last || view.flash || force) {
       this.last = key;
       const send = () => win.webContents.send('overlay:view', { ...view, corner: this.corner });
       if (win.webContents.isLoading()) win.webContents.once('did-finish-load', send);

@@ -23,6 +23,28 @@ export interface HostStatus {
   paused: boolean;
   /** The frontmost window's bounds from the last watcher event (the overlay follows Resolve). */
   bounds?: number[] | undefined;
+  /** "Test with harness": the gate accepts jogstick-harness instead of waiting for Resolve. */
+  testMode: boolean;
+  /** Resolve (the profile's app) is the frontmost app; test mode can't be on then. */
+  resolveFront: boolean;
+}
+
+/** What the test-mode overlay shows for each output: the command and the keys it became. */
+export interface CommandEcho {
+  what: string;
+  keys: string;
+}
+
+/** The harness's app id per OS (scripts/harness-mac.sh, target/release/jogstick-harness.exe). */
+export const HARNESS_APP: Record<Os, string> = {
+  darwin: 'dev.jogstick.harness',
+  win32: 'jogstick-harness.exe',
+};
+
+/** `Cmd+KeyB` → `Cmd+B`; `Digit1` → `1`. For people, not for the addon. */
+export function comboText(code: string | null, mods: readonly string[]): string {
+  const key = code?.replace(/^Key(?=[A-Z]$)/, '').replace(/^Digit(?=\d$)/, '');
+  return [...mods, ...(key ? [key] : [])].join('+');
 }
 
 export interface HostDeps {
@@ -72,6 +94,11 @@ export class Host {
   private padRestart: ReturnType<typeof setTimeout> | null = null;
   private padRestarts = 0;
   private unknownElevation = new Set<number>();
+  private testMode = false;
+  private resolveFront = false;
+  /** The last time Resolve was in front, for the test report. */
+  private lastResolve: (FrontmostInfo & { seenAt: string; elevated: boolean | null }) | null = null;
+  private echoListeners = new Set<(e: CommandEcho) => void>();
   readonly now: () => number;
 
   constructor(
@@ -155,11 +182,51 @@ export class Host {
       pad: { connected: this.padConnected, name: this.padName },
       paused: this.paused,
       bounds: this.bounds,
+      testMode: this.testMode,
+      resolveFront: this.resolveFront,
     };
+  }
+
+  /**
+   * "Test with harness" (tray, off at every launch): the gate also accepts jogstick-harness, so a
+   * real controller can drive it on a machine without Resolve, and each command is echoed to the
+   * overlay. Never while Resolve is in front: refused then, and switched off the moment Resolve
+   * comes to the front.
+   */
+  setTestMode(on: boolean): boolean {
+    if (on === this.testMode) return true;
+    if (on && this.resolveFront) {
+      this.deps.log.add('warn', 'test mode refused: DaVinci Resolve is in front');
+      return false;
+    }
+    this.testMode = on;
+    this.deps.log.add(
+      'app',
+      on ? `test mode on: driving ${HARNESS_APP[this.deps.os]}, not Resolve` : 'test mode off',
+    );
+    this.refreshGate();
+    this.emitStatus();
+    return true;
+  }
+
+  /** Test mode only: each command (or raw key) and the keys sent for it. */
+  onCommandEcho(l: (e: CommandEcho) => void): () => void {
+    this.echoListeners.add(l);
+    return () => this.echoListeners.delete(l);
+  }
+
+  private echo(what: string, keys: string): void {
+    if (!this.testMode) return;
+    for (const l of this.echoListeners) l({ what, keys });
   }
 
   get currentConfig(): Config {
     return this.config;
+  }
+
+  /** For the test report: the last Resolve window seen, and whether Jogstick runs elevated. */
+  get diagnostics() {
+    return { lastResolve: this.lastResolve, jogstickElevated: this.selfElevated };
   }
 
   get queueBusy(): boolean {
@@ -328,6 +395,7 @@ export class Host {
             appMatch: [
               ...this.config.profile.appMatch[this.deps.os],
               ...(this.deps.extraGateApps ?? []),
+              ...(this.testMode ? [HARNESS_APP[this.deps.os]] : []),
             ],
             selfPid: process.pid,
             ...(this.deps.os === 'win32' && {
@@ -366,11 +434,28 @@ export class Host {
   }
 
   private onFrontmost(front: FrontmostInfo | null): void {
+    const resolveFront =
+      front !== null &&
+      this.config.profile.appMatch[this.deps.os].some(
+        (m) => m.toLowerCase() === front.id.toLowerCase(),
+      );
+    const resolveChanged = resolveFront !== this.resolveFront;
+    this.resolveFront = resolveFront;
+    if (front && resolveFront)
+      this.lastResolve = {
+        ...front,
+        seenAt: new Date().toISOString(),
+        elevated: this.deps.os === 'win32' ? this.elevated(front.pid) : null,
+      };
+    if (resolveFront && this.testMode) {
+      this.testMode = false;
+      this.deps.log.add('app', 'test mode off: DaVinci Resolve came to the front');
+    }
     const next = this.evaluate(front);
     const boundsChanged = front?.bounds?.join() !== this.bounds?.join();
     this.bounds = front?.bounds;
     if (sameGate(next, this.gate)) {
-      if (boundsChanged) this.emitStatus();
+      if (boundsChanged || resolveChanged) this.emitStatus();
       return;
     }
     const was = this.gate.open;
@@ -457,9 +542,11 @@ export class Host {
           const r = resolveCommand(c.id, os, this.config.keymap, this.config.overrides);
           if (!r.combo) {
             log.add('warn', `command ${c.id} has no shortcut`);
+            this.echo(c.id, 'no shortcut');
             break;
           }
           const mods = osMods([...r.combo.mods, ...c.mods], os);
+          this.echo(c.id, comboText(r.combo.code, mods));
           if (c.phase === 'tap') this.queue.push(this.writer.tap(r.combo.code, mods));
           else if (r.combo.code !== null) {
             this.heldCommands.set(c.owner, r.combo.code);
@@ -468,6 +555,7 @@ export class Host {
           break;
         }
         case 'keyDown': {
+          this.echo('key', comboText(c.code, osMods(c.mods, os)));
           const next = commands[i + 1];
           // keyTap arrives as keyDown + keyUp of the same owner: send it as one combo.
           if (next?.type === 'keyUp' && next.code === c.code && next.owner === c.owner) {

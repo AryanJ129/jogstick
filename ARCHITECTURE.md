@@ -95,6 +95,16 @@ tick (and the engine's `wakeAt`).
   `uncaughtException` all call the addon's `releaseAll`; `releaseLeftovers` runs at start-up.
 - **Tray** (`tray.ts`), **overlay** (`overlay.ts`: a click-through label on Resolve's display),
   Steam and elevated-Resolve warnings, **Export Console log…**.
+- **Export test report** (`report.ts`): one click writes `jogstick-report-<date>.zip` beside the app
+  (Downloads, then Desktop, if that folder isn't writable) and says where: the Console, versions,
+  displays, Resolve process/front state, controller, active profile + overrides + settings, unbound
+  commands, and gate events and warnings/errors since start-up (kept apart from the Console's 2000
+  lines). Built from Jogstick's own state only; the home folder and user name are redacted; no
+  network. The zip writer is ~60 lines on `node:zlib` (no dependency).
+- **Test with harness** (tray checkbox, off at every launch): the gate also accepts
+  `jogstick-harness`, so a real controller can drive it on a machine without Resolve; the overlay
+  echoes each command and its keys (`TEST · edit.splitClip · Cmd+B`). Refused while Resolve is in
+  front, and switched off the moment Resolve comes to the front.
 - **e2e** (`pnpm e2e`, `scripts/e2e.ts`): runs the built host with a replayed pad script against
   `jogstick-harness` (gate pointed at the harness) and checks every key the harness saw, a hot
   reload, and that nothing is held at the end. Runs in CI on Windows.

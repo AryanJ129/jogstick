@@ -9,7 +9,13 @@ About 20 minutes. Edit mode only; Color mode comes in rc2. Thank you!
    isn't signed yet: click **More info → Run anyway**.
 2. Nothing opens: Jogstick lives in the **tray** (click the **^** by the clock if you don't see its
    icon). Right-click it for the menu.
-3. Connect the Xbox controller. It **buzzes once** when Jogstick has it.
+3. Connect the Xbox controller, any of three ways. It **buzzes once** when Jogstick has it.
+   - **USB cable:** plug it in; Windows sets it up by itself.
+   - **Bluetooth** (Xbox One S controllers and newer: the plastic around the Xbox button matches the
+     face): hold the small **pair** button on top until the Xbox button flashes fast, then Windows
+     Settings → Bluetooth & devices → **Add device** → Bluetooth → **Xbox Wireless Controller**.
+   - **Xbox Wireless Adapter** (the USB dongle): plug it in, press its button, then hold the
+     controller's **pair** button until the Xbox button stays lit.
 4. Open **DaVinci Resolve normally** (not "Run as administrator"), open a project with some clips on
    the Edit page timeline, and click the timeline once. A small **EDIT** label appears in the corner
    and fades after a moment.
@@ -17,10 +23,10 @@ About 20 minutes. Edit mode only; Color mode comes in rc2. Thank you!
    Layout** to none (or quit Steam) — otherwise Steam may also turn the pad into keys and every press
    happens twice.
 
-## The four tests
+## The three tests
 
-Record your screen for the first 60 seconds of test 1 (Win+Alt+R starts/stops the Xbox Game Bar
-recorder) so we can see the label and the timeline together.
+Record your screen for each test (Win+Alt+R starts and stops the Xbox Game Bar recorder; the
+videos land in Videos\Captures) so we can see the label and the timeline together.
 
 - [ ] **1. A 10-cut rough edit using only the pad.** Jog to a spot, **A** to cut (Blade at
       playhead, Ctrl+B), carry on until there are 10 cuts. Then remove a few pieces with **LB + A** (ripple
@@ -33,8 +39,16 @@ recorder) so we can see the label and the timeline together.
       **File → Project Settings…**). The label shows **PAUSED · DIALOG**
       and the pad does nothing. Close the dialog: the pad works again. Also switch to another app
       (e.g. your browser) and press a few buttons — nothing should happen there.
-- [ ] **4. Export the Console log.** Tray icon → **Export Console log…** → save it, then send us the
-      `.txt` file together with the recording.
+
+## Send back
+
+1. **The test report:** tray icon → **Export test report**. It saves
+   `jogstick-report-<date>.zip` next to `Jogstick.exe` and tells you where. It holds Jogstick's
+   own log and settings only: no personal files, and nothing is sent anywhere.
+2. **The screen recordings** of the three tests.
+3. **Your exported keyboard preset** from Resolve: DaVinci Resolve → **Keyboard Customization**
+   (Ctrl+Alt+K) → the **⋯** menu at the top right → **Export Preset**.
+4. **The probe results zip** from `jogstick-probe`, if you haven't sent it yet.
 
 ## Cheat sheet (Edit mode)
 

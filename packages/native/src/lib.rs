@@ -1,12 +1,16 @@
 //! Jogstick native layer: key/mouse injection, pad reading and app detection,
 //! shared by the Node addon (`addon` feature), `jogstick-probe` and `jogstick-harness`.
 
+#[cfg(any(target_os = "macos", windows))]
+pub mod app;
 pub mod combo;
 pub mod injector;
 pub mod keymap;
 pub mod pad;
 pub mod probe;
 
+#[cfg(target_os = "macos")]
+pub mod app_mac;
 #[cfg(target_os = "macos")]
 pub mod inject_mac;
 
@@ -18,7 +22,7 @@ pub mod inject_win;
 pub mod pad_win;
 
 #[cfg(feature = "addon")]
-mod addon;
+pub mod addon;
 
 /// Value written into every injected event (`dwExtraInfo` on Windows,
 /// `eventSourceUserData` on macOS) so our own code can recognise it. ASCII "JOGS".

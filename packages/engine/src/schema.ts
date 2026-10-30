@@ -305,6 +305,38 @@ export const KeymapEntrySchema = z
   .strict();
 export const KeymapSchema = z.record(z.string().regex(COMMAND_ID_PATTERN), KeymapEntrySchema);
 
+/**
+ * `<userData>/keymap-overrides.json`: per-command shortcuts for people who changed
+ * Resolve's defaults (ARCHITECTURE.md → Remapping (b)/(c)). `null` = explicitly unbound;
+ * a missing OS key falls back to the shipped default for that OS.
+ */
+export const KeymapOverridesSchema = z.record(
+  z.string().regex(COMMAND_ID_PATTERN),
+  z
+    .object({
+      win32: z.string().min(1).nullable().optional(),
+      darwin: z.string().min(1).nullable().optional(),
+    })
+    .strict(),
+);
+
+export const OverlayCornerSchema = z.enum(['topLeft', 'topRight', 'bottomLeft', 'bottomRight']);
+
+/** `<userData>/settings.json`. Every field optional; missing file = defaults. */
+export const HostSettingsSchema = z
+  .object({
+    /** Profile id: a file in `<userData>/profiles/` or a shipped profile id. */
+    activeProfile: z.string().min(1).default('resolve-default'),
+    overlay: z
+      .object({
+        enabled: z.boolean().default(true),
+        corner: OverlayCornerSchema.default('topRight'),
+      })
+      .strict()
+      .default({ enabled: true, corner: 'topRight' }),
+  })
+  .strict();
+
 export type ButtonInput = z.infer<typeof ButtonInputSchema>;
 export type InputId = z.infer<typeof InputIdSchema>;
 export type Curve = z.infer<typeof CurveSchema>;
@@ -315,6 +347,9 @@ export type Profile = z.infer<typeof ProfileSchema>;
 export type ProfileInput = z.input<typeof ProfileSchema>;
 export type KeymapEntry = z.infer<typeof KeymapEntrySchema>;
 export type Keymap = z.infer<typeof KeymapSchema>;
+export type KeymapOverrides = z.infer<typeof KeymapOverridesSchema>;
+export type HostSettings = z.infer<typeof HostSettingsSchema>;
+export type OverlayCorner = z.infer<typeof OverlayCornerSchema>;
 
 export function parseProfile(raw: unknown): Profile {
   return ProfileSchema.parse(raw);

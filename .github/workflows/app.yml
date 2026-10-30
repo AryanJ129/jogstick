@@ -1,0 +1,64 @@
+name: app
+
+# Packages the Windows app (release candidates for the tester). The release itself is created
+# from Aryan's machine with scripts/gh-as-aryan so it is authored by AryanJ129, like the probe.
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    env:
+      # Static CRT: the addon loads on a PC without the VC++ redistributable.
+      RUSTFLAGS: -C target-feature=+crt-static
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: packages/native
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm -F @jogstick/engine test
+      - run: pnpm -F @jogstick/desktop test
+      - run: pnpm -F @jogstick/native build
+      - run: cargo build --release --features harness --bins
+        working-directory: packages/native
+      - run: pnpm -F @jogstick/desktop build
+      # Same gate as CI: the host must drive the harness end to end before anything is packaged.
+      - run: pnpm e2e
+      - run: pnpm package:app
+      - name: Zip + checksums
+        shell: pwsh
+        run: |
+          $v = (Get-Content apps/desktop/package.json | ConvertFrom-Json).version
+          $name = "Jogstick-$v-windows-x64"
+          Copy-Item docs/rc-checklist.md "dist/$name/CHECKLIST.md"
+          Compress-Archive -Path "dist/$name" -DestinationPath "dist/$name.zip"
+          Get-FileHash "dist/$name.zip" -Algorithm SHA256 | ForEach-Object { "$($_.Hash.ToLower())  $(Split-Path $_.Path -Leaf)" } | Set-Content -Encoding ascii dist/SHA256SUMS
+          Get-Content dist/SHA256SUMS
+      - uses: actions/upload-artifact@v7
+        with:
+          name: jogstick-windows-x64
+          path: |
+            dist/*.zip
+            dist/SHA256SUMS
+          if-no-files-found: error
+      - name: Upload e2e logs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-logs-windows-app
+          path: |
+            packages/native/target/e2e/
+            packages/native/target/harness-logs/
+          if-no-files-found: ignore

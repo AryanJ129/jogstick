@@ -116,6 +116,16 @@ impl Drop for Timer {
 /// (including when the pad is disconnected: `raw` is then `None`).
 /// Returns whether the high-resolution timer was available.
 pub fn run(hz: u32, slot: u32, stop: &AtomicBool, mut on_poll: impl FnMut(f64, Option<Poll>)) -> bool {
+    pace(hz, stop, |t| {
+        let poll = read(slot).map(|(packet, raw)| Poll { t, slot, packet, raw });
+        on_poll(t, poll);
+    })
+}
+
+/// Call `tick(seconds since start)` at `hz` on the current thread until `stop` is set,
+/// paced by a high-resolution waitable timer (falls back to `sleep`). The thread is
+/// raised to above-normal priority. Returns whether the high-resolution timer was used.
+pub fn pace(hz: u32, stop: &AtomicBool, mut tick: impl FnMut(f64)) -> bool {
     // SAFETY: adjusting our own thread's priority.
     unsafe {
         let _ = SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_ABOVE_NORMAL);
@@ -126,9 +136,7 @@ pub fn run(hz: u32, slot: u32, stop: &AtomicBool, mut on_poll: impl FnMut(f64, O
     let start = Instant::now();
     let mut next = start + period;
     while !stop.load(Ordering::Relaxed) {
-        let t = start.elapsed().as_secs_f64();
-        let poll = read(slot).map(|(packet, raw)| Poll { t, slot, packet, raw });
-        on_poll(t, poll);
+        tick(start.elapsed().as_secs_f64());
         let now = Instant::now();
         if next > now {
             let wait = next - now;

@@ -70,6 +70,11 @@ pub fn lookup(code: &str) -> Option<KeyDef> {
     KEYS.iter().copied().find(|d| d.code == code)
 }
 
+/// Every key Jogstick can send.
+pub fn all() -> &'static [KeyDef] {
+    KEYS
+}
+
 /// Modifier keys. Windows uses the left-hand virtual keys; macOS the left-hand keycodes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Modifier {

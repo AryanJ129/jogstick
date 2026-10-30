@@ -12,12 +12,11 @@ no dialog open. Switch to any other app (or open a Resolve dialog) and the pad g
    app isn't code-signed yet, so Windows shows "Windows protected your PC": click **More info → Run
    anyway**. _(Releases with the app: coming in Phase 6.)_
 2. **Connect the controller** by USB, the Xbox Wireless Adapter or Bluetooth. The Status screen shows
-   **Controller connected** and the pad **buzzes once**. _(Status screen: coming in Phase 4; the
-   connection buzz: coming in Phase 3.)_
+   **Controller connected** and the pad **buzzes once**. _(Status screen: coming in Phase 4; until
+   then the tray menu shows the controller.)_
 3. **Open Resolve normally**, not with "Run as administrator" (Windows blocks keys from normal apps
    to elevated ones, and Jogstick warns you on the Status screen if it detects this). Click the
-   timeline once so it has keyboard focus. The on-screen label shows **EDIT**. _(Overlay label:
-   coming in Phase 3.)_
+   timeline once so it has keyboard focus. The on-screen label shows **EDIT**.
 4. **Bind or skip the commands Resolve has no default shortcut for:** Paste insert, Previous node and
    Next node. The **Setup** screen lists them. For each one, either pick a free key (Jogstick suggests
    F13–F19) and add that shortcut in Resolve's Keyboard Customization, or skip it, which leaves that
@@ -25,14 +24,14 @@ no dialog open. Switch to any other app (or open a Resolve dialog) and the pad g
    editor exists" below.)_
 5. **Edit.** Left stick jogs, triggers shuttle, LB and RB hold layers (the label shows `EDIT · TRIM`
    or `EDIT · MARK`), View/Menu are undo/redo. The full layout is in `docs/profiles.md`.
-   _(Coming in Phase 3.)_
 6. **Color.** Go to the **Color** page, turn on **Workspace → Full Screen**, and make sure the
    **Primaries – Color Wheels** palette is visible. Press **View + Menu** together to switch to
    Color mode (the label shows **COLOR**). The first time, run the **three-point calibration**: hover
    the mouse over the Lift wheel centre, the Offset wheel centre and the Lift master dial, pressing **A**
    on each. If you later resize Resolve or change displays, the label shows **RECALIBRATE**.
    _(Color mode and calibration: coming in Phase 5.)_
-7. **Pause** any time from the **tray icon** (or the Pause toggle on the Status screen). _(Coming in Phase 3.)_
+7. **Pause** any time from the **tray icon** (or the Pause toggle on the Status screen). _(Status
+   screen: coming in Phase 4.)_
 
 ## macOS
 
@@ -43,7 +42,8 @@ The same steps as Windows, with these differences:
 - **Accessibility grant (first launch).** macOS only lets apps send keys and mouse events after you
   allow them: System Settings → Privacy & Security → **Accessibility** → turn on **Jogstick**. The
   Setup screen shows whether the grant is active and has a button that opens the right settings page.
-  Until the app is signed, macOS asks again after each update. _(Coming in Phases 3–4.)_
+  Until the app is signed, macOS asks again after each update. _(Setup screen: coming in Phase 4;
+  until then the tray menu shows the grant and opens the settings page.)_
 - **Wired Xbox controllers.** Over USB, macOS reads only the **Xbox One S** (`045E:02EA`), **Elite
   Series 2** (`045E:0B00`) and **Series X|S** (`045E:0B12`) controllers. Every other Xbox controller
   must be paired over **Bluetooth**.
@@ -64,6 +64,6 @@ it works.
 
 ### Remapping before the editor exists
 
-From Phase 3 you can remap by editing JSON files in Jogstick's user data folder. They are reloaded as
+You can remap by editing JSON files in Jogstick's user data folder. They are reloaded as
 soon as you save; an invalid file is rejected with an error in the Console and the last good version
 stays active. Paths and an example (swap X and B) are in `ARCHITECTURE.md` → Remapping → (c).

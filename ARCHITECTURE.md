@@ -73,6 +73,54 @@ How the probe measures them:
   slow/fast drags from the centre, a drag starting off-puck, master dial horizontal/vertical, offset),
   with the YRGB values the tester reads after each; each drag undone with `Ctrl+Z` on a fresh node.
 
+## Host (Phase 3)
+
+`apps/desktop/src/main/`. One `Host` owns the engine state and drives it from pad frames plus an 8 ms
+tick (and the engine's `wakeAt`).
+
+- **Pad sources** (`pad.ts`): `XInputSource` on Windows (the addon's pad thread), `GamepadSource` on
+  macOS (a hidden renderer polling the Gamepad API, every message zod-validated), `ReplaySource` for
+  the e2e driver.
+- **Gate** (`gate.ts`): open only when the frontmost app matches the profile's `appMatch` (case
+  insensitive), is not Jogstick itself, and is not a dialog, elevated, or transient. Reasons are shown
+  in the tray and overlay (`PAUSED · DIALOG`, `BLOCKED · ADMIN`). Every close runs `releaseAll`.
+- **Output queue** (`queue.ts`): every injected event goes through one serialized queue. Combos with
+  extra modifiers go out as mods → wait `comboSpacingMs` → key down/up → wait → base mods; plain keys
+  have no spacing. With the gate closed, presses are dropped and releases still go out; a key-up whose
+  key-down was never sent is dropped.
+- **Keymap** (`engine/keymap.ts`): `resolveCommand` picks the user override, then the shipped default;
+  an unbound command logs once and sends nothing.
+- **Store** (`store.ts`): the JSON files and hot reload of Remapping (c).
+- **Release everywhere:** gate close, pad disconnect, config reload, pause, sleep/lock/shutdown,
+  `uncaughtException` all call the addon's `releaseAll`; `releaseLeftovers` runs at start-up.
+- **Tray** (`tray.ts`), **overlay** (`overlay.ts`: a click-through label on Resolve's display),
+  Steam and elevated-Resolve warnings, **Export Console log…**.
+- **Export test report** (`report.ts`): one click writes `jogstick-report-<date>.zip` beside the app
+  (Downloads, then Desktop, if that folder isn't writable) and says where: the Console, versions,
+  displays, Resolve process/front state, controller, active profile + overrides + settings, unbound
+  commands, and gate events and warnings/errors since start-up (kept apart from the Console's 2000
+  lines). Built from Jogstick's own state only (app ids, never window titles); every profile
+  folder (`C:\Users\<x>`, 8.3 short names, `/Users/<x>`) and the user name are redacted; never
+  overwrites; no network. The zip writer is ~60 lines on `node:zlib` (no dependency).
+- **Test with harness** (tray checkbox, off at every launch): the gate also accepts
+  `jogstick-harness`, so a real controller can drive it on a machine without Resolve; the overlay
+  echoes each command and the keys it resolves to (`TEST · edit.splitClip · Cmd+B`; a press the gate
+  drops in a race shows as `dropped` in the Console). Refused while Resolve is in front (the tray
+  menu's own foreground doesn't count), and switched off with a notification the moment Resolve
+  comes to the front. A switch from one accepted app to another (harness → Resolve) is a gate
+  close + releaseAll + re-open. Any app with the harness's id is accepted while it is on.
+- **e2e** (`pnpm e2e`, `scripts/e2e.ts`): runs the built host with a replayed pad script against
+  `jogstick-harness` (gate pointed at the harness) and checks every key the harness saw, a hot
+  reload, and that nothing is held at the end. Runs in CI on Windows.
+- **Packaging** (`pnpm package:app`): copies Electron's distribution and fills `resources/` (app,
+  native addon, tray icons); no packager dependency. `app.yml` builds the Windows zip on `v*` tags.
+
+**Decision (Phase 3): a transient frontmost window closes the gate.** The brief let transient windows
+(tooltips, popovers, menus) keep the gate open. Phase 3 closes it instead (`reason: 'transient'`):
+keys sent while a Resolve menu or popover has focus land in that menu, not the timeline, and the
+cost is only a short pause. Revisit if the friend's rc1 report shows the pad pausing during normal
+editing.
+
 ## Remapping (first-class)
 
 Two independent layers, so a user can change either without touching the other:
@@ -128,7 +176,7 @@ The app's user data folder (`app.getPath('userData')`):
 ```
 
 - **Hot reload:** the host watches `<userData>` (debounced 200 ms). On save it parses the file and
-  validates it with zod (`ProfileSchema`; `KeymapOverridesSchema` is added in Phase 3), then runs
+  validates it with zod (`ProfileSchema`, `KeymapOverridesSchema`, `HostSettingsSchema`), then runs
   semantic checks: unknown command ids, layers referenced but not defined, combos the addon can't map.
   - **Valid:** `releaseAll`, swap in the new profile/keymap atomically, Console logs `reloaded <file>`.
   - **Invalid:** Console logs the file, the zod path and the message; **the last good version stays

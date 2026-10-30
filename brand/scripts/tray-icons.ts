@@ -4,7 +4,7 @@
 //   brand/tray/win/<taskbar>/<state>.png, @1.5x, @2x and <state>.ico (16/24/32)
 //                                             filled in the state color; on a light taskbar every
 //                                             shape gets a dark stroke so yellow doesn't vanish.
-// The host picks win/dark or win/light from nativeTheme.shouldUseDarkColorsForSystemIcons.
+// The host picks win/dark or win/light from nativeTheme.shouldUseDarkColorsForSystemIntegratedUI.
 // Run: pnpm brand:icons
 import { deflateSync } from 'node:zlib';
 import { mkdirSync, writeFileSync } from 'node:fs';

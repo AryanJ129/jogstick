@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'"
+    />
+    <title>Jogstick overlay</title>
+  </head>
+  <body>
+    <div id="chip" class="chip" hidden>
+      <span id="icon" class="icon"></span>
+      <span id="label" class="label"></span>
+    </div>
+    <script type="module" src="./src/overlay.ts"></script>
+  </body>
+</html>

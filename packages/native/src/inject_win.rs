@@ -10,10 +10,11 @@ use crate::EVENT_TAG;
 use std::mem::size_of;
 use windows::Win32::Foundation::POINT;
 use windows::Win32::UI::Input::KeyboardAndMouse::{
-    GetKeyboardLayout, MapVirtualKeyExW, SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, INPUT_MOUSE, KEYBDINPUT,
-    KEYBD_EVENT_FLAGS, KEYEVENTF_EXTENDEDKEY, KEYEVENTF_KEYUP, MAPVK_VK_TO_VSC_EX, MOUSEEVENTF_ABSOLUTE,
-    MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP, MOUSEEVENTF_MIDDLEDOWN, MOUSEEVENTF_MIDDLEUP, MOUSEEVENTF_MOVE,
-    MOUSEEVENTF_RIGHTDOWN, MOUSEEVENTF_RIGHTUP, MOUSEEVENTF_VIRTUALDESK, MOUSEINPUT, MOUSE_EVENT_FLAGS, VIRTUAL_KEY,
+    GetAsyncKeyState, GetKeyboardLayout, MapVirtualKeyExW, SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, INPUT_MOUSE,
+    KEYBDINPUT, KEYBD_EVENT_FLAGS, KEYEVENTF_EXTENDEDKEY, KEYEVENTF_KEYUP, MAPVK_VK_TO_VSC_EX, MOUSEEVENTF_ABSOLUTE,
+    MOUSEEVENTF_HWHEEL, MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP, MOUSEEVENTF_MIDDLEDOWN, MOUSEEVENTF_MIDDLEUP,
+    MOUSEEVENTF_MOVE, MOUSEEVENTF_RIGHTDOWN, MOUSEEVENTF_RIGHTUP, MOUSEEVENTF_VIRTUALDESK, MOUSEEVENTF_WHEEL,
+    MOUSEINPUT, MOUSE_EVENT_FLAGS, VIRTUAL_KEY,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     GetCursorPos, GetForegroundWindow, GetSystemMetrics, GetWindowThreadProcessId, SM_CXVIRTUALSCREEN,
@@ -66,12 +67,25 @@ pub fn key_input(vk: u16, extended: bool, down: bool) -> INPUT {
 }
 
 fn mouse_input(dx: i32, dy: i32, flags: MOUSE_EVENT_FLAGS) -> INPUT {
+    mouse_input_data(dx, dy, 0, flags)
+}
+
+/// `data` is the signed wheel delta for MOUSEEVENTF_WHEEL / HWHEEL (mouseData is a DWORD).
+fn mouse_input_data(dx: i32, dy: i32, data: i32, flags: MOUSE_EVENT_FLAGS) -> INPUT {
     INPUT {
         r#type: INPUT_MOUSE,
         Anonymous: INPUT_0 {
-            mi: MOUSEINPUT { dx, dy, mouseData: 0, dwFlags: flags, time: 0, dwExtraInfo: EVENT_TAG as usize },
+            mi: MOUSEINPUT { dx, dy, mouseData: data as u32, dwFlags: flags, time: 0, dwExtraInfo: EVENT_TAG as usize },
         },
     }
+}
+
+/// One wheel notch.
+const WHEEL_DELTA: i32 = 120;
+
+fn async_down(vk: u16) -> bool {
+    // SAFETY: plain query; the high bit means "down now".
+    (unsafe { GetAsyncKeyState(i32::from(vk)) } as u16) & 0x8000 != 0
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -145,11 +159,44 @@ impl Backend for WinBackend {
         send(&[mouse_input(nx, ny, MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK)])
     }
 
+    fn scroll(&mut self, dx: i32, dy: i32, pixels: bool, _mods: Mods) -> Result<(), String> {
+        // Lines → whole notches; "pixels" are passed as raw wheel units for smooth scrolling.
+        let unit = if pixels { 1 } else { WHEEL_DELTA };
+        let mut inputs = Vec::new();
+        if dy != 0 {
+            inputs.push(mouse_input_data(0, 0, dy * unit, MOUSEEVENTF_WHEEL));
+        }
+        if dx != 0 {
+            inputs.push(mouse_input_data(0, 0, dx * unit, MOUSEEVENTF_HWHEEL));
+        }
+        if inputs.is_empty() {
+            return Ok(());
+        }
+        send(&inputs)
+    }
+
     fn cursor_position(&self) -> Result<(f64, f64), String> {
         let mut p = POINT::default();
         // SAFETY: `p` is a valid out-pointer.
         unsafe { GetCursorPos(&mut p) }.map_err(|e| format!("GetCursorPos: {e}"))?;
         Ok((f64::from(p.x), f64::from(p.y)))
+    }
+
+    fn key_is_down(&self, key: &KeyDef) -> bool {
+        async_down(key.win_vk)
+    }
+
+    fn modifier_is_down(&self, m: Modifier) -> bool {
+        async_down(m.win_vk())
+    }
+
+    fn button_is_down(&self, btn: MouseBtn) -> bool {
+        // VK_LBUTTON / VK_RBUTTON / VK_MBUTTON (physical buttons, not swapped).
+        async_down(match btn {
+            MouseBtn::Left => 0x01,
+            MouseBtn::Right => 0x02,
+            MouseBtn::Middle => 0x04,
+        })
     }
 }
 
